@@ -1,3 +1,5 @@
 # Build outputs, never committed. The published sub-list (index.json at the repo root) IS committed.
 dist/
 .DS_Store
+__pycache__/
+*.pyc
