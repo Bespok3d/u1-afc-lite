@@ -1,3 +1,4 @@
+# ruff: noqa: N802  Klipper registers g-code handlers by method name; they must be cmd_UPPERCASE.
 class AFCState:
     IDLE = "idle"
     LOADING = "loading"
@@ -14,7 +15,17 @@ class AFC:
         self.units = {}
         self.lanes = {}
 
+        self.gcode.register_command("SET_SPOOL_ID", self.cmd_SET_SPOOL_ID,
+                                    desc="Assign a Spoolman spool id to an AFC lane")
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+
+    def cmd_SET_SPOOL_ID(self, gcmd):
+        lane_name = gcmd.get('LANE')
+        spool_id = gcmd.get_int('SPOOL_ID', None)
+        lane = self.lanes.get(lane_name)
+        if lane is None:
+            raise gcmd.error(f"unknown AFC lane: {lane_name}")
+        lane.spool_id = spool_id
 
     def _handle_connect(self):
         for name, obj in self.printer.lookup_objects("AFC_unit"):
@@ -25,41 +36,62 @@ class AFC:
             lane_name = name.split(None, 1)[1] if " " in name else name
             self.lanes[lane_name] = obj
 
-    def _get_current_lane(self):
+    def _lane_park_states(self):
+        states = {}
+        for lane_name, lane in self.lanes.items():
+            extruder = self.printer.lookup_object(lane.extruder_name, None)
+            read_state = getattr(extruder, "get_park_detector_status", None)
+            states[lane_name] = read_state() if read_state else None
+        return states
+
+    def _toolhead_lane(self):
         try:
-            toolhead = self.printer.lookup_object('toolhead')
-            current_extruder = toolhead.extruder.get_name()
-            for lane_name, lane in self.lanes.items():
-                if lane.extruder_name == current_extruder:
-                    return lane_name
-        except:
-            pass
+            mounted = self.printer.lookup_object('toolhead').get_extruder().get_name()
+        except Exception:
+            return None
+        for lane_name, lane in self.lanes.items():
+            if lane.extruder_name == mounted:
+                return lane_name
         return None
 
-    def get_status(self, eventtime=None):
-        str = {}
-        str['current_load'] = None
-        str['current_lane'] = self._get_current_lane()
-        str['next_lane'] = None
-        str['current_state'] = AFCState.IDLE
-        str["current_toolchange"] = 0
-        str["number_of_toolchanges"] = 0
-        str['spoolman'] = True
-        str["td1_present"] = False
-        str["lane_data_enabled"] = False
-        str['error_state'] = False
-        str["bypass_state"] = False
-        str["quiet_mode"] = False
-        str["position_saved"] = False
+    def _get_current_lane(self):
+        """The lane whose tool is mounted on the carrier. With park detectors that is the extruder
+        reporting ACTIVATE; if none is ACTIVATE nothing is mounted, so return None (no active lane,
+        every Eject greys out). Without detectors, fall back to the live extruder."""
+        try:
+            states = self._lane_park_states()
+        except Exception:
+            return None
+        active = [name for name, state in states.items()
+                  if state and state.get('state') == 'ACTIVATE']
+        if active:
+            return active[0]
+        has_detectors = any(state is not None for state in states.values())
+        return None if has_detectors else self._toolhead_lane()
 
-        str['units'] = list(self.units.keys())
-        str['lanes'] = list(self.lanes.keys())
-        str["extruders"] = []
-        str["hubs"] = []
-        str["buffers"] = []
-        str["message"] = ""
-        str["led_state"] = ""
-        return str
+    def get_status(self, eventtime=None):
+        return {
+            'current_load': None,
+            'current_lane': self._get_current_lane(),
+            'next_lane': None,
+            'current_state': AFCState.IDLE,
+            'current_toolchange': 0,
+            'number_of_toolchanges': 0,
+            'spoolman': True,
+            'td1_present': False,
+            'lane_data_enabled': False,
+            'error_state': False,
+            'bypass_state': False,
+            'quiet_mode': False,
+            'position_saved': False,
+            'units': list(self.units.keys()),
+            'lanes': list(self.lanes.keys()),
+            'extruders': [],
+            'hubs': [],
+            'buffers': [],
+            'message': "",
+            'led_state': "",
+        }
 
 def load_config(config):
     return AFC(config)
