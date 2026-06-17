@@ -1,7 +1,13 @@
 # ruff: noqa: PLR2004  Tests assert against literal spool ids and colors.
 """Regression tests for the SET_SPOOL_ID g-code command."""
+import base64
+
 import pytest
 from AFC import AFC
+
+
+def _b64(text):
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
 class FakeGcode:
@@ -48,8 +54,10 @@ class FakeGcmd:
 
 
 class FakeLane:
-    def __init__(self):
+    def __init__(self, lane_index=0):
         self.spool_id = None
+        self.lane_index = lane_index
+        self.filament_name = ""
 
 
 def make_afc():
@@ -69,6 +77,21 @@ def test_set_spool_id_unknown_lane_raises():
     afc.lanes = {}
     with pytest.raises(ValueError):
         afc.cmd_SET_SPOOL_ID(FakeGcmd({"LANE": "E9", "SPOOL_ID": "1"}))
+
+
+def test_set_lane_filament_name_targets_lane_by_extruder():
+    afc = make_afc()
+    lane = FakeLane(lane_index=3)
+    afc.lanes = {"E3": lane}
+    afc.cmd_SET_LANE_FILAMENT_NAME(FakeGcmd({"EXTRUDER": "3", "NAME_B64": _b64("ZIRO Silk Gold")}))
+    assert lane.filament_name == "ZIRO Silk Gold"
+
+
+def test_set_lane_filament_name_unknown_extruder_raises():
+    afc = make_afc()
+    afc.lanes = {"E0": FakeLane(lane_index=0)}
+    with pytest.raises(ValueError):
+        afc.cmd_SET_LANE_FILAMENT_NAME(FakeGcmd({"EXTRUDER": "9", "NAME_B64": _b64("x")}))
 
 
 class FakeExtruder:

@@ -102,6 +102,54 @@ def test_panel_pick_loses_to_rfid_tag(monkeypatch, tmp_path):
     assert lane._resolve_spool_id({"loaded": True, "map": "T3"}) == 77
 
 
+class FakeExtruder:
+    def __init__(self, state):
+        self._state = state
+
+    def get_park_detector_status(self, eventtime=None):
+        return {"state": self._state}
+
+
+class ExtruderPrinter(FakePrinter):
+    def __init__(self, extruder_name, extruder):
+        self._extruder_name, self._extruder = extruder_name, extruder
+
+    def lookup_object(self, name, default=None):
+        return self._extruder if name == self._extruder_name else default
+
+
+def lane_with_park_detector(park_state):
+    lane = make_lane(1)
+    lane.extruder_name = "extruder1"
+    lane.printer = ExtruderPrinter("extruder1", FakeExtruder(park_state))
+    return lane
+
+
+def test_mounted_true_when_park_detector_active():
+    lane = lane_with_park_detector("ACTIVATE")
+    assert lane._mounted() is True
+    assert lane.get_status()["mounted"] is True
+
+
+def test_mounted_false_when_park_detector_parked():
+    lane = lane_with_park_detector("PARKED")
+    assert lane._mounted() is False
+    assert lane.get_status()["mounted"] is False
+
+
+def test_mounted_absent_without_park_detector():
+    lane = make_lane(0)
+    assert lane._mounted() is None
+    assert "mounted" not in lane.get_status()
+
+
+def test_filament_name_emitted_only_when_enriched():
+    lane = make_lane(0)
+    assert "filament_name" not in lane.get_status()
+    lane.filament_name = "ZIRO Silk Gold"
+    assert lane.get_status()["filament_name"] == "ZIRO Silk Gold"
+
+
 def test_missing_rfid_file_is_not_a_crash(monkeypatch, tmp_path):
     monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "nope.json"))
     lane = make_lane(0)

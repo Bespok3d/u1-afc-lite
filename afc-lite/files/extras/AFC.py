@@ -1,4 +1,15 @@
 # ruff: noqa: N802  Klipper registers g-code handlers by method name; they must be cmd_UPPERCASE.
+import base64
+
+
+def _decode_name(raw: str) -> str:
+    """Base64-decode a pushed filament name (encoded so spaces survive Klipper's gcode parser)."""
+    try:
+        return base64.b64decode(raw).decode('utf-8', 'replace') if raw else ''
+    except ValueError:
+        return ''
+
+
 class AFCState:
     IDLE = "idle"
     LOADING = "loading"
@@ -17,6 +28,8 @@ class AFC:
 
         self.gcode.register_command("SET_SPOOL_ID", self.cmd_SET_SPOOL_ID,
                                     desc="Assign a Spoolman spool id to an AFC lane")
+        self.gcode.register_command("SET_LANE_FILAMENT_NAME", self.cmd_SET_LANE_FILAMENT_NAME,
+                                    desc="Set a lane filament display name by extruder")
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
 
     def cmd_SET_SPOOL_ID(self, gcmd):
@@ -26,6 +39,17 @@ class AFC:
         if lane is None:
             raise gcmd.error(f"unknown AFC lane: {lane_name}")
         lane.spool_id = spool_id
+
+    def cmd_SET_LANE_FILAMENT_NAME(self, gcmd):
+        extruder = gcmd.get_int('EXTRUDER')
+        lane = self._lane_for_extruder(extruder)
+        if lane is None:
+            raise gcmd.error(f"no AFC lane for extruder index: {extruder}")
+        lane.filament_name = _decode_name(gcmd.get('NAME_B64', ''))
+
+    def _lane_for_extruder(self, extruder):
+        return next((lane for lane in self.lanes.values()
+                     if getattr(lane, 'lane_index', None) == extruder), None)
 
     def _handle_connect(self):
         for name, obj in self.printer.lookup_objects("AFC_unit"):

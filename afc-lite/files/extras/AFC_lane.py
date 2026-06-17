@@ -42,6 +42,7 @@ class AFCLane:
         self.filament_feed = None
 
         self.spool_id = None
+        self.filament_name = ""
         self._rfid_cache: dict = {}
         self._rfid_mtime: float | None = None
 
@@ -148,6 +149,32 @@ class AFCLane:
             return None
         return coerce_spool_id(getattr(macro, "variables", {}).get("spool_id"))
 
+    def _park_detector_state(self) -> dict | None:
+        if not self.extruder_name:
+            return None
+        extruder = self.printer.lookup_object(self.extruder_name, None)
+        read_state = getattr(extruder, "get_park_detector_status", None)
+        return read_state() if read_state else None
+
+    def _mounted(self) -> bool | None:
+        """True when this lane's tool is the one parked on the carrier. None when the lane has no
+        park detector (a buffer-fed setup, where 'mounted' is meaningless): the panel then falls
+        back to tool-loaded gating instead of toolchanger gating."""
+        state = self._park_detector_state()
+        if state is None:
+            return None
+        return state.get('state') == 'ACTIVATE'
+
+    def _mounted_field(self) -> dict:
+        mounted = self._mounted()
+        return {} if mounted is None else {'mounted': mounted}
+
+    def _filament_name_field(self) -> dict:
+        """A vendor+name display label pushed by the Spoolman bridge (SET_LANE_FILAMENT_NAME).
+        Emitted only when enriched, so the panel falls back to its own spool.filament.name when the
+        bridge is absent (default display preserved)."""
+        return {'filament_name': self.filament_name} if self.filament_name else {}
+
     def _resolve_spool_id(self, state: dict) -> int | None:
         """First real id wins: direct (helper push / SET_SPOOL_ID), then RFID tag, then the spool
         picked for the lane's tool in the Spoolman panel, then the shim's synthetic channel id when
@@ -183,6 +210,7 @@ class AFCLane:
         response['filament_status'] = 'unknown'
         response['filament_status_led'] = 'gray'
         response['status'] = AFCLaneState.EMPTY
+        response.update({**self._mounted_field(), **self._filament_name_field()})
         return response
 
 def load_config_prefix(config):

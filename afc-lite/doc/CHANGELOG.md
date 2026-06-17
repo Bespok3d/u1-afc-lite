@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.6
+
+- Lanes can now carry a resolved vendor+name display label (`filament_name`), set by the
+  Spoolman bridge via the new `SET_LANE_FILAMENT_NAME EXTRUDER=<n> NAME_B64=<base64>` command
+  (addressed by extruder index; the name is base64-encoded so it survives Klipper's gcode
+  parser). The field is emitted only when enriched, so the panel keeps falling back to its own
+  `spool.filament.name` when no bridge is present (default display preserved).
+
+## 0.1.5
+
+- Each lane now reports a `mounted` boolean in its status, read from that lane's own
+  park detector (ACTIVATE = mounted on the carrier). The AFC panel uses it to auto-detect
+  toolchanger mode per lane, so Eject enables for the mounted lane without depending on the
+  global `current_lane` name match. Buffer-fed setups (no park detector) omit the field and
+  keep the original tool-loaded gating.
+
 ## 0.1.4
 
 - Eject greys out unless the lane's tool is mounted on the carrier. `AFC.current_lane`
