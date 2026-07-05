@@ -4,7 +4,7 @@ import json
 import os
 
 import AFC_lane
-from AFC_lane import CHANNEL_SPOOL_BASE, AFCLane, coerce_spool_id
+from AFC_lane import AFCLane, coerce_spool_id
 
 
 class FakePrinter:
@@ -55,10 +55,13 @@ def test_explicit_spool_id_wins_over_everything():
     assert lane._resolve_spool_id({"loaded": True}) == 55
 
 
-def test_channel_fallback_only_when_loaded(monkeypatch, tmp_path):
+def test_no_synthetic_id_when_no_real_source(monkeypatch, tmp_path):
+    """A loaded lane with no real id (no SET_SPOOL_ID / RFID / tool-macro pick) resolves to None.
+    The dropped 0.1.3 shim emitted a synthetic 9M+index id here; a screen pick's NAME now rides
+    filament_name, so the lane must never invent a spool id that resolves to nothing."""
     monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
     lane = make_lane(2)
-    assert lane._resolve_spool_id({"loaded": True}) == CHANNEL_SPOOL_BASE + 2
+    assert lane._resolve_spool_id({"loaded": True}) is None
     assert lane._resolve_spool_id({"loaded": False}) is None
 
 
