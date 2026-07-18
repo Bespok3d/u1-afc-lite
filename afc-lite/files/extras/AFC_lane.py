@@ -3,9 +3,6 @@ import os
 from typing import Any
 
 RFID_DATA_FILE = "/oem/printer_data/config/bespok3d/data/rfid_data.json"
-# Synthetic per-channel ids the local Spoolman shim serves; high range never collides with a real
-# Spoolman server's auto-increment spool ids.
-CHANNEL_SPOOL_BASE = 9_000_000
 
 
 class AFCLaneState:
@@ -177,14 +174,13 @@ class AFCLane:
 
     def _resolve_spool_id(self, state: dict) -> int | None:
         """First real id wins: direct (helper push / SET_SPOOL_ID), then RFID tag, then the spool
-        picked for the lane's tool in the Spoolman panel, then the shim's synthetic channel id when
-        the lane is loaded per stock print_task; else nothing."""
-        synthetic = CHANNEL_SPOOL_BASE + self.lane_index if state.get('loaded') else None
+        picked for the lane's tool in the Spoolman panel; else nothing. A screen pick with no
+        Spoolman carries its NAME on `filament_name` (pushed by the Spoolman bridge), never a
+        synthetic spool id."""
         candidates = (
             coerce_spool_id(self.spool_id),
             self._rfid_spool_id(),
             self._tool_spool_id(state),
-            synthetic,
         )
         return next((value for value in candidates if value is not None), None)
 

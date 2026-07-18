@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.7
+
+- Dropped the local Spoolman shim (`local_spoolman.py`) and the synthetic per-lane spool id
+  (`9,000,000 + index`). It was the 0.1.3 way to show a screen-picked filament's name before the
+  panel could read a lane name field; it was never wired into the install and only shipped as dead
+  weight in the package. Both vendored frontends (fluidd 1.37.2, mainsail 2.18.0) now read
+  `lane.filament_name`, which the Spoolman bridge already pushes (0.1.6), so the shim and its
+  dangling id are gone. Real spool-id resolution (direct `SET_SPOOL_ID`, RFID tag, mapped-tool
+  macro pick) is unchanged; a loaded lane with no real source now resolves to no id instead of an
+  id that resolved to nothing.
+
 ## 0.1.6
 
 - Lanes can now carry a resolved vendor+name display label (`filament_name`), set by the

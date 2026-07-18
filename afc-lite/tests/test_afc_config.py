@@ -21,6 +21,13 @@ FRONTEND_ASSETS = {
     "mainsail": PLUGINS_DIR / "mainsail-plugin" / "mainsail" / "files" / "html" / "assets",
     "fluidd": PLUGINS_DIR / "fluidd-plugin" / "fluidd" / "files" / "fluidd" / "assets",
 }
+# Eject is also locked while actively printing, reusing each frontend's own "is printing" getter
+# (the one its AFC Load/Unload buttons already use). Both are 'printing'-only, so Eject stays
+# available while paused for a filament swap.
+EJECT_PRINT_GUARD = {
+    "mainsail": "disabled:!e.laneActive||e.printerIsPrintingOnly",
+    "fluidd": "disabled:!e.laneActive||e.printerPrinting",
+}
 
 
 def macro_body(macro_name):
@@ -71,3 +78,9 @@ def test_frontend_eject_gated_on_mounted_tool(frontend):
     text = _afc_bundle_text(FRONTEND_ASSETS[frontend])
     assert "disabled:!e.laneActive" in text
     assert "e.toolLoaded||!e.laneRunout&&e.toolLoaded" not in text
+
+
+@pytest.mark.parametrize("frontend", sorted(FRONTEND_ASSETS))
+def test_frontend_eject_locked_during_print(frontend):
+    text = _afc_bundle_text(FRONTEND_ASSETS[frontend])
+    assert EJECT_PRINT_GUARD[frontend] in text
