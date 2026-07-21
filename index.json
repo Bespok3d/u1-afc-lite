@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "U1 AFC Lite",
-  "publisher": "PLACEHOLDER",
+  "publisher": "679939555819fb5f6423dc68c4388e76bfa9b4e0",
   "updated": "2026-07-03",
   "plugins": [
     {
@@ -12,7 +12,7 @@
       "tagline": "Four-lane filament tracking and tool-change macros for the U1.",
       "category": "filament",
       "channel": "stable",
-      "publisher": "PLACEHOLDER",
+      "publisher": "679939555819fb5f6423dc68c4388e76bfa9b4e0",
       "printer_specific": true,
       "published_at": "2026-06-08",
       "updated_at": "2026-07-03",
@@ -27,7 +27,7 @@
       "conflicts": [],
       "changelog_url": "afc-lite/doc/CHANGELOG.md",
       "doc_url": "https://github.com/Bespok3d/u1-afc-lite/blob/main/afc-lite/doc/README.md",
-      "download_url": "https://api.github.com/repos/Bespok3d/u1-afc-lite/releases/assets/481342881",
+      "download_url": "https://api.github.com/repos/Bespok3d/u1-afc-lite/releases/assets/484994373",
       "deps": []
     }
   ],
