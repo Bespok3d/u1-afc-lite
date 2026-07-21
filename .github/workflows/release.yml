@@ -36,7 +36,7 @@ jobs:
           bake: 'false'
           atom-repo: ${{ github.repository }}
           list-name: 'U1 AFC Lite'
-          list-publisher: 'PLACEHOLDER'
+          list-publisher: '679939555819fb5f6423dc68c4388e76bfa9b4e0'
           list-ref-name: 'U1 AFC Lite'
           main-index-repo: Bespok3d/main-index
           # Per-repo Actions secret today (GitHub Free cannot org-secret private repos); becomes ONE org
