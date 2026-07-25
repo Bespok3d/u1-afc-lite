@@ -29,7 +29,8 @@ Drop `--source` to build every plugin in the repo at once.
 Bump a plugin's `manifest.json` `version` and push to `main`. CI runs the `Bespok3d/b3-builder`
 Action over the whole repo, which packs each `.b3`, cuts a release per plugin, assembles this repo's
 `index.json` sub-list as `U1 AFC Lite`, and registers it in `Bespok3d/main-index`
-(`lists/<repo>.json`). Secret: `MAIN_INDEX_TOKEN` (contents:write on main-index). Signing deferred.
+(`lists/<repo>.json`). Secrets: `MAIN_INDEX_TOKEN` (contents:write on main-index) and
+`REGISTRY_SIGNING_KEY` (the org registry key the `b3-builder` Action signs each `.b3` and atom with).
 
 ## Maintainership
 
