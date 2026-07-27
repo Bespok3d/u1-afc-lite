@@ -52,5 +52,3 @@ button.
 
 - Snapmaker U1 only: the lane-to-extruder map and the filament-sensor names are U1 specific.
 - Restarts Klipper on install so the new extras and config load.
-
-> Not yet verified on a physical U1.
