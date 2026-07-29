@@ -1,3 +1,7 @@
+# Originally from the Extended Firmware overlay 31-feature-afc-lite (paxx12), GPL-3.0.
+# Modified by the Bespok3d project on 2026-07-28: extended with Bespok3d lane state, filament-name
+# decoding and the g-code surface this plugin needs.
+
 # ruff: noqa: N802  Klipper registers g-code handlers by method name; they must be cmd_UPPERCASE.
 import base64
 

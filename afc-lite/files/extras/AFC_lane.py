@@ -1,3 +1,7 @@
+# Originally from the Extended Firmware overlay 31-feature-afc-lite (paxx12), GPL-3.0.
+# Modified by the Bespok3d project on 2026-07-28: extended with per-lane RFID data and the lane
+# state this plugin reports.
+
 import json
 import os
 from typing import Any
