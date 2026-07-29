@@ -1,5 +1,11 @@
 # u1-afc-lite
 
+[![licence](https://img.shields.io/badge/licence-GPL--3.0-blue)](LICENSE)
+[![release](https://img.shields.io/github/v/release/Bespok3d/u1-afc-lite)](https://github.com/Bespok3d/u1-afc-lite/releases)
+[![version](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FBespok3d%2Fu1-afc-lite%2Fmain%2Fafc-lite%2Fmanifest.json&query=%24.version&label=version&color=blue)](afc-lite/manifest.json)
+![printer](https://img.shields.io/badge/printer-Snapmaker%20U1-informational)
+![stock firmware](https://img.shields.io/badge/stock%20firmware-no%20flashing-brightgreen)
+
 A single-plugin Bespok3d repo: lightweight Automated Filament Changer support for the Snapmaker U1's
 four toolheads, ported from the extended firmware's `31-feature-afc-lite`.
 
