@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8
+
+- Licensing only, nothing about how the plugin works has changed. The files it installs that came
+  from other projects now carry those projects' own licence notices, plus a line recording what
+  Bespok3d changed in them and when.
+
 ## 0.1.7
 
 - Dropped the local Spoolman shim (`local_spoolman.py`) and the synthetic per-lane spool id
@@ -45,10 +51,10 @@
   picked for the lane's tool in the Spoolman panel, or a synthetic per-lane id),
   so the AFC panel shows each filament's name even for a spool selected by hand
   with no RFID.
-- Experimental: not yet verified on physical hardware.
+- Experimental: installed on a U1, not exercised with a real AFC unit.
 
 ## 0.1.0
 
 - First release. Ports the extended-firmware AFC Lite multi-material control
   (Box Turtle style) to stock firmware as drop-in Klipper extras plus config.
-- Experimental: not yet verified on physical hardware.
+- Experimental: installed on a U1, not exercised with a real AFC unit.
