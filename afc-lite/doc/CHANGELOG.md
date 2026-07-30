@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9
+
+- Doc only, nothing about how the plugin works has changed. The page now separates what the screen
+  does from what the slicer does with each lane's filament: the screen shows it exactly, while the
+  slicer's Sync Filament Information only matches filaments it ships itself and falls back to
+  `Generic <material>` for everything else. That is the slicer's own behaviour, covered in full by the
+  Spoolman Bridge doc under "Limits worth knowing about".
+
 ## 0.1.8
 
 - Licensing only, nothing about how the plugin works has changed. The files it installs that came

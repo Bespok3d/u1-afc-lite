@@ -15,7 +15,10 @@ tracking and changing filament.
 
 `SET_COLOR`, `SET_MATERIAL`, `SET_VENDOR`, `SET_MAP`, `SET_SPOOL_ID`, `SET_WEIGHT`, `CHANGE_TOOL`,
 `LANE_UNLOAD`, `TOOL_UNLOAD`. Per-lane state is pushed into the U1's `SET_PRINT_FILAMENT_CONFIG`, so
-the screen and slicer stay in sync with what is loaded in each lane.
+the screen and the slicer see what is loaded in each lane. The screen shows it exactly. The slicer's
+**Sync Filament Information** only matches filaments it ships itself and falls back to
+`Generic <material>` for everything else; that is the slicer's behaviour, and the Spoolman Bridge doc
+covers it under "Limits worth knowing about".
 
 - `CHANGE_TOOL` (Load button) loads filament.
 - `TOOL_UNLOAD` (Unload button) unloads filament.
