@@ -10,11 +10,46 @@ tracking and changing filament.
 - **Klipper extras** into `klippy/extras/`: `AFC.py`, `AFC_unit.py`, `AFC_lane.py`.
 - **`afc-lite.cfg`**: one `[AFC]`, one `[AFC_unit U1]`, and four `[AFC_lane E0..E3]` mapped to
   `extruder`/`extruder1..3` and the `e0..e3_filament` motion sensors.
+- **`afc-toolmap.cfg`**: the print-start hold below. Installed always, silent unless you turn it
+  on.
+
+## Holding a print until the lane-to-tool map is made
+
+Off by default. Turn it on with the plugin's **Hold a print until the lane-to-tool map is made**
+setting.
+
+A print sent from the slicer with "start printing after upload" begins on the printer with no browser
+involved, so neither web interface gets a chance to open its lane assignment dialog and the file runs
+with whatever map was left over. With this on, the print does not start at all: the printer keeps
+the request and raises a flag. Fluidd and Mainsail each already carry that dialog, one row per tool
+the file uses, with the filament type and weight checks; each opens it on the flag, and its print
+button sets the map and then starts the print. The printer refuses to set the map on a print that
+has started, which is why it is held back rather than started and stopped.
+
+Needs the matching Bespok3d Fluidd or Mainsail plugin installed: those carry the piece that opens the
+dialog. Without one of them the print is held and nothing asks.
+
+A held print never starts on its own. It waits as long as it takes, and dismissing the dialog drops
+it without printing. From the console, `AFC_TOOLMAP_GO` starts a held print by hand and
+`AFC_TOOLMAP_CANCEL` drops it.
+
+Nothing you wrote is touched. `PRINT_START` is left exactly as it is, so an edited `PRINT_START` and
+the print-start hooks ported from the extended firmware keep working. The hold hangs off the command
+the web interface and the slicer use to start a print, and a print started from the printer's screen
+is not affected at all: the screen asks for the map itself.
+
+## A print that uses more tools than the printer has lanes
+
+The U1 feeds 32 logical tools from its 4 lanes, so a file sliced for 6 tools prints by putting two
+of them on a lane that already feeds another tool. Both tools then draw the same filament, which is
+what you want when two of the file's colours are the same material. Assign each tool its lane in the
+lane assignment dialog; a lane can be picked for as many tools as you like, and picking it for one
+tool no longer takes it away from another.
 
 ## Macros
 
-`SET_COLOR`, `SET_MATERIAL`, `SET_VENDOR`, `SET_MAP`, `SET_SPOOL_ID`, `SET_WEIGHT`, `CHANGE_TOOL`,
-`LANE_UNLOAD`, `TOOL_UNLOAD`. Per-lane state is pushed into the U1's `SET_PRINT_FILAMENT_CONFIG`, so
+`SET_COLOR`, `SET_MATERIAL`, `SET_VENDOR`, `SET_MAP`, `SET_SPOOL_ID`, `SET_WEIGHT`,
+`AFC_TOOLS_IN_PLAY`, `CHANGE_TOOL`, `LANE_UNLOAD`, `TOOL_UNLOAD`. Per-lane state is pushed into the U1's `SET_PRINT_FILAMENT_CONFIG`, so
 the screen and the slicer see what is loaded in each lane. The screen shows it exactly. The slicer's
 **Sync Filament Information** only matches filaments it ships itself and falls back to
 `Generic <material>` for everything else; that is the slicer's behaviour, and the Spoolman Bridge doc
@@ -23,6 +58,10 @@ covers it under "Limits worth knowing about".
 - `CHANGE_TOOL` (Load button) loads filament.
 - `TOOL_UNLOAD` (Unload button) unloads filament.
 - `LANE_UNLOAD` (Eject button) docks (parks) the tool via `PARK_EXTRUDER`. It moves no filament.
+- `AFC_TOOLS_IN_PLAY COUNT=<n>` says how many of the printer's 32 logical tools the file about to
+  print uses. The web interface sends it when it opens the lane assignment dialog, because only the
+  browser has the file. Without it a lane cannot tell a tool the print does not use from one mapped
+  to it, and the panel lists every unused tool on the first lane.
 
 ## Filament names
 

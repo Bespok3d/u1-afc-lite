@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.10
+
+- New, off by default: the printer can hold a print and ask which lane feeds each tool before it
+  runs, showing the question in Fluidd or Mainsail. It covers a print sent straight from the slicer
+  with "start printing after upload", which never touches a browser and until now could only be
+  mapped from the printer's own screen. One setting: whether to ask.
+- The print is held before it starts rather than started and then paused, because the printer
+  refuses to set the filament map on a print that has begun. The map is made while the printer is
+  still idle, and the print then runs with it.
+- A held print never starts by itself. It waits for an answer as long as it takes, because a print
+  that starts with the wrong lanes is a ruined plate. Dismissing the question drops the print;
+  `AFC_TOOLMAP_CANCEL` does the same from the console.
+- Prints started from the printer's own screen are untouched, and so is `PRINT_START`: the screen
+  asks for the map itself.
+- A lane now reports every tool it feeds, and only the tools the file actually uses. The U1 feeds 32
+  logical tools from its 4 lanes, so a file with more tools than lanes puts several of them on one
+  lane; a lane you have moved every tool off now shows as feeding nothing.
+- Needs the matching Bespok3d Fluidd 0.1.5 or Mainsail 0.1.6 plugin: that is what opens the question
+  and what tells the printer how many tools the file uses. Without one the printer never asks, and
+  each lane reports its own tool as before.
+
 ## 0.1.9
 
 - Doc only, nothing about how the plugin works has changed. The page now separates what the screen

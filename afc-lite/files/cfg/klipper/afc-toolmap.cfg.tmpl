@@ -1,0 +1,75 @@
+# Keep a print from starting at all until the lane-to-tool map has been made.
+#
+# A print sent from a slicer with "start printing after upload" begins on the printer, with no
+# browser in the loop, so neither web interface gets to ask which lane feeds each tool and the file
+# runs with whatever map was left over. This holds the request back and raises a flag; Fluidd and
+# Mainsail each already carry an AFC lane assignment dialog, and each opens it on seeing the flag.
+#
+# The print is never started and then stopped. Klipper's own print_task_config refuses
+# SET_PRINT_EXTRUDER_MAP while print_stats.state is 'printing' OR 'paused', so a print that has
+# begun can never have its map set, whatever is done to it afterwards. The only order that works is:
+# hold the request, ask, set the map, then start.
+#
+# Nothing is drawn here. The request is simply not passed on.
+#
+# A held print never starts on its own. It starts when the map has been made, and it is dropped
+# when the question is dismissed. There is no timer: an unanswered question leaves the printer
+# where it was, which is the only outcome that cannot ruin a plate.
+#
+# It hooks SDCARD_PRINT_FILE, the command the web interface and the slicer use to start a print,
+# and never PRINT_START. Klipper reads every config file into one namespace, so a second
+# [gcode_macro PRINT_START] section does not wrap the printer's own one, it overwrites its lines.
+# Only a command registered by Klipper itself, never by a macro, can be wrapped this way.
+#
+# Prints started from the printer's screen go through a different command and are left alone: the
+# screen asks for the map itself.
+#
+# Off unless AFC_TOOLMAP_ASK is on. Off, the wrapper below only starts the print.
+
+[gcode_macro _AFC_TOOLMAP]
+variable_ask: "$AFC_TOOLMAP_ASK"
+variable_holding_for_map: 0
+variable_held_print: ""
+gcode:
+
+[gcode_macro SDCARD_PRINT_FILE]
+rename_existing: _AFC_TOOLMAP_START_PRINT_BASE
+gcode:
+    {% if printer['gcode_macro _AFC_TOOLMAP'].ask|lower == 'on' %}
+        # Stored before the flag goes up, because the flag is what sends the browser looking for it.
+        # The whole request is kept so the print later starts with the arguments it was given.
+        #
+        # The request itself contains quotes, since a file name with a space in it arrives quoted.
+        # Klipper reads a command through shlex and then reads VALUE as a python literal, so the
+        # stored text has to survive both. tojson writes the python literal, escaping the quotes,
+        # the backslashes and the apostrophes that would otherwise end it early; the single quotes
+        # around it are the shlex layer, which passes its contents through untouched. Hand written
+        # quoting here lost the quotes around the file name and failed outright on a name with a
+        # space in it.
+        SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE='{rawparams|tojson}'
+        _AFC_TOOLMAP_HOLD
+    {% else %}
+        _AFC_TOOLMAP_START_PRINT_BASE {rawparams}
+    {% endif %}
+
+[gcode_macro _AFC_TOOLMAP_HOLD]
+description: Keep the print unstarted until the web interface has made the lane-to-tool map
+gcode:
+    SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=1
+
+[gcode_macro AFC_TOOLMAP_GO]
+description: The map is made, start the print that was held back
+gcode:
+    {% set held_print = printer['gcode_macro _AFC_TOOLMAP'].held_print %}
+    SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=0
+    SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE="''"
+    {% if held_print %}
+        _AFC_TOOLMAP_START_PRINT_BASE {held_print}
+    {% endif %}
+
+[gcode_macro AFC_TOOLMAP_CANCEL]
+description: The question was dismissed, drop the print that was held back without starting it
+gcode:
+    SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=0
+    SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE="''"
+    RESPOND MSG="The lane assignment was dismissed, the print was not started."

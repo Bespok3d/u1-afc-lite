@@ -84,3 +84,12 @@ def test_frontend_eject_gated_on_mounted_tool(frontend):
 def test_frontend_eject_locked_during_print(frontend):
     text = _afc_bundle_text(FRONTEND_ASSETS[frontend])
     assert EJECT_PRINT_GUARD[frontend] in text
+
+
+def test_assigning_a_tool_to_a_lane_leaves_every_other_tool_alone():
+    """The U1 feeds 32 logical tools from 4 lanes, so a file with 6 tools puts two of them on a
+    lane that already feeds another. Handing the lane's previous tool back to a second lane, which
+    this macro used to do, capped a print at four tools."""
+    body = macro_body("SET_MAP")
+    assert body.count("SET_PRINT_EXTRUDER_MAP") == 1
+    assert "extruder_map_table" not in body

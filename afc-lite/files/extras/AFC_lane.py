@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 RFID_DATA_FILE = "/oem/printer_data/config/bespok3d/data/rfid_data.json"
+TOOL_COUNT_MACRO = "gcode_macro AFC_TOOLS_IN_PLAY"
 
 
 class AFCLaneState:
@@ -70,12 +71,32 @@ class AFCLane:
     def _indexed(self, status, key, default):
         return dict(enumerate(status.get(key, []))).get(self.lane_index, default)
 
-    def _mapped_tool(self, status):
-        tool_to_extruder = dict(enumerate(status.get('extruder_map_table', [])))
-        for tool_idx, extruder_idx in tool_to_extruder.items():
-            if extruder_idx == self.lane_index:
-                return f"T{tool_idx}"  # AFC only supports a single tool mapped
-        return f"T{self.lane_index}"
+    def _tools_in_play(self) -> int:
+        """How many logical tools the file about to print uses, as declared by the web interface
+        through the AFC_TOOLS_IN_PLAY macro. Zero when nothing has been declared."""
+        macro = self.printer.lookup_object(TOOL_COUNT_MACRO, None)
+        if macro is None:
+            return 0
+        return int(macro.get_status(None).get('count', 0))
+
+    def _mapped_tools(self, status):
+        """Every logical tool the printer feeds from this lane. The U1 has 32 logical tools over 4
+        physical lanes, so a file that uses more tools than the printer has lanes puts several of
+        them on one lane; reporting only the first left the rest showing as fed by no lane.
+
+        The table is always 32 entries long and an entry the file never set still reads as lane 0,
+        so only the tools the file actually uses are counted; otherwise the first lane claims every
+        unused tool and lists T0 through T30.
+
+        A lane feeding none of the file's tools reports none. It used to fall back to its own tool,
+        which put a tool back on a lane the user had just moved it off, so the assignment could
+        never be emptied and moving another tool in appeared to move the first one away."""
+        tool_count = self._tools_in_play()
+        if not tool_count:
+            return [f"T{self.lane_index}"]
+        tools_in_play = status.get('extruder_map_table', [])[:tool_count]
+        return [f"T{tool_index}" for tool_index, extruder_index in enumerate(tools_in_play)
+                if extruder_index == self.lane_index]
 
     def _read_print_task_state(self, state, eventtime):
         status = self.print_task_config.get_status(eventtime)
@@ -86,7 +107,7 @@ class AFCLane:
         state['color'] = self._indexed(status, 'filament_color_rgba', 'FFFFFFFF')
         if status.get('auto_replenish_filament', False):
             state['runout_lane'] = 'AUTO'
-        state['map'] = self._mapped_tool(status)
+        state['map'] = self._mapped_tools(status)
 
     def _get_state(self, eventtime=None):
         """Get filament info from print_task_config based on lane index"""
@@ -100,7 +121,7 @@ class AFCLane:
             'type': 'NONE',
             'subtype': 'NONE',
             'color': 'FFFFFFFF',
-            'map': f"T{self.lane_index}",
+            'map': [f"T{self.lane_index}"],
             'runout_lane': 'NONE',
         }
 
@@ -141,14 +162,18 @@ class AFCLane:
             return None
         return coerce_spool_id(entry.get("SPOOL_ID"))
 
-    def _tool_spool_id(self, state: dict) -> int | None:
-        """Spool the user picked for this lane's tool in the Spoolman panel. The web UI writes it to
-        the mapped T<n> macro's `spool_id` variable (SET_GCODE_VARIABLE), never to the lane."""
-        tool = state.get('map')
-        macro = self.printer.lookup_object(f"gcode_macro {tool}", None) if tool else None
+    def _macro_spool_id(self, tool: str) -> int | None:
+        macro = self.printer.lookup_object(f"gcode_macro {tool}", None)
         if macro is None:
             return None
         return coerce_spool_id(getattr(macro, "variables", {}).get("spool_id"))
+
+    def _tool_spool_id(self, state: dict) -> int | None:
+        """Spool the user picked for this lane's tool in the Spoolman panel. The web UI writes it to
+        the mapped T<n> macro's `spool_id` variable (SET_GCODE_VARIABLE), never to the lane. One
+        lane can feed several tools, and they all draw the same spool, so the first pick wins."""
+        picks = (self._macro_spool_id(tool) for tool in state.get('map', []))
+        return next((spool_id for spool_id in picks if spool_id is not None), None)
 
     def _park_detector_state(self) -> dict | None:
         if not self.extruder_name:
@@ -197,7 +222,7 @@ class AFCLane:
         response['unit'] = self.unit_name
         response['lane'] = self.lane_index
         response['extruder'] = self.extruder_name
-        response['map'] = state.get('map', f"T{self.lane_index}")
+        response['map'] = state.get('map', [f"T{self.lane_index}"])
         response['load'] = state.get('loaded', False)
         response['prep'] = state.get('loaded', False)
         response['tool_loaded'] = state.get('tool_loaded', response['load'])
