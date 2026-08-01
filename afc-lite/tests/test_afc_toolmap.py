@@ -189,8 +189,56 @@ def test_releasing_twice_cannot_start_the_same_print_twice():
     assert "SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE=\"''\"" in body
 
 
+def test_the_lanes_the_print_needs_are_fed_before_it_starts():
+    """The lanes are known only once the map is made, and filament cannot be loaded into a lane
+    while the print runs, so the feed sits between the answer and the start."""
+    body = macro_body("AFC_TOOLMAP_GO")
+    assert body.index("_AFC_TOOLMAP_FEED_EMPTY_LANES") < body.index("_AFC_TOOLMAP_START_PRINT_BASE")
+
+
+def test_only_a_print_that_was_held_is_fed():
+    """Nothing is fed when no print is held: the map belongs to a file that is not starting."""
+    body = macro_body("AFC_TOOLMAP_GO")
+    after_the_guard = body.split("{% if held_print %}", 1)[1]
+    assert "_AFC_TOOLMAP_FEED_EMPTY_LANES" in after_the_guard
+
+
+def test_nothing_is_fed_unless_the_owner_turned_it_on():
+    body = macro_body("_AFC_TOOLMAP_FEED_EMPTY_LANES")
+    assert "feed|lower == 'on'" in body
+    assert "if feeding_is_on else 0" in body
+
+
+def test_only_the_lanes_this_print_uses_are_fed():
+    """The map table is always 32 entries long and an entry the file never set still reads as lane
+    0, so reading the whole table would feed lane 0 for every print, whatever it uses."""
+    body = macro_body("_AFC_TOOLMAP_FEED_EMPTY_LANES")
+    assert "extruder_map_table[:tools_in_play]" in body
+    assert "lane in lanes_this_print_uses" in body
+
+
+def test_a_lane_that_already_holds_filament_is_left_alone():
+    body = macro_body("_AFC_TOOLMAP_FEED_EMPTY_LANES")
+    assert "not lane_has_filament[lane]" in body
+
+
+def test_each_lane_is_fed_once_and_by_the_printers_own_loader():
+    """Several tools of one file share a lane, so walking the tools would feed the same lane again
+    for each of them. Walking the lanes instead feeds each at most once."""
+    body = macro_body("_AFC_TOOLMAP_FEED_EMPTY_LANES")
+    assert "for lane in range(lane_has_filament|length)" in body
+    assert "AUTO_FEEDING EXTRUDER={lane} LOAD=1 PRINTING=1" in body
+
+
+def test_the_feed_is_off_by_default():
+    feed = next(entry for entry in manifest()["config"] if entry["key"] == "AFC_TOOLMAP_FEED")
+    assert feed["default"] == "off"
+    assert feed["options"] == ["off", "on"]
+
+
 def test_the_rendered_settings_stay_valid_klipper_config():
     assert 'variable_ask: "$AFC_TOOLMAP_ASK"' in TOOLMAP_TEMPLATE.read_text()
+    assert 'variable_feed: "$AFC_TOOLMAP_FEED"' in TOOLMAP_TEMPLATE.read_text()
 
 
 def test_every_template_variable_is_declared_in_the_manifest():

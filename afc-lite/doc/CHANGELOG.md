@@ -14,6 +14,11 @@
   `AFC_TOOLMAP_CANCEL` does the same from the console.
 - Prints started from the printer's own screen are untouched, and so is `PRINT_START`: the screen
   asks for the map itself.
+- Also new, also off by default: once you have said which lane feeds each tool, the printer can load
+  the lanes that print needs and have none before it runs, with its own loader, instead of stopping
+  on a filament error. A print started from the printer's screen has always done this; one started
+  from a browser or the slicer never did. A lane that already has filament, and a lane with no spool
+  in its feeder, are both left alone.
 - A lane now reports every tool it feeds, and only the tools the file actually uses. The U1 feeds 32
   logical tools from its 4 lanes, so a file with more tools than lanes puts several of them on one
   lane; a lane you have moved every tool off now shows as feeding nothing.

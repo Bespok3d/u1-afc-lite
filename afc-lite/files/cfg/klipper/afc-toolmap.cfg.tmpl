@@ -25,9 +25,15 @@
 # screen asks for the map itself.
 #
 # Off unless AFC_TOOLMAP_ASK is on. Off, the wrapper below only starts the print.
+#
+# Once the map is made, the lanes the print needs are known, so the lanes among them that hold no
+# filament can be fed before the print runs. That is the printer's own auto loader, the one the
+# screen uses when a print is started there; a print started from a browser or a slicer never got
+# it and stopped on a filament error instead. Off unless AFC_TOOLMAP_FEED is on.
 
 [gcode_macro _AFC_TOOLMAP]
 variable_ask: "$AFC_TOOLMAP_ASK"
+variable_feed: "$AFC_TOOLMAP_FEED"
 variable_holding_for_map: 0
 variable_held_print: ""
 gcode:
@@ -57,6 +63,26 @@ description: Keep the print unstarted until the web interface has made the lane-
 gcode:
     SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=1
 
+[gcode_macro _AFC_TOOLMAP_FEED_EMPTY_LANES]
+description: Feed filament into the lanes this print uses that have none
+# Runs on a held print once its map has been made, so the lanes it uses are known: every tool the
+# file uses names the lane that feeds it. The map table is always 32 entries long and an entry the
+# file never set still reads as lane 0, so it is read only as far as the number of tools the web
+# interface declared; without that, every print would feed lane 0.
+#
+# AUTO_FEEDING is the printer's own loader, and it homes, picks the tool up, heats, feeds and
+# cleans by itself. It does nothing for a lane already loaded or for a channel whose auto mode is
+# off, and PRINTING=1 is what tells it to leave a lane with no spool in the feeder alone rather
+# than fail, exactly as it behaves for a print started from the screen.
+gcode:
+    {% set feeding_is_on = printer['gcode_macro _AFC_TOOLMAP'].feed|lower == 'on' %}
+    {% set tools_in_play = printer['gcode_macro AFC_TOOLS_IN_PLAY'].count|int if feeding_is_on else 0 %}
+    {% set lanes_this_print_uses = printer.print_task_config.extruder_map_table[:tools_in_play] %}
+    {% set lane_has_filament = printer.print_task_config.filament_exist %}
+    {% for lane in range(lane_has_filament|length) if lane in lanes_this_print_uses and not lane_has_filament[lane] %}
+        AUTO_FEEDING EXTRUDER={lane} LOAD=1 PRINTING=1
+    {% endfor %}
+
 [gcode_macro AFC_TOOLMAP_GO]
 description: The map is made, start the print that was held back
 gcode:
@@ -64,6 +90,7 @@ gcode:
     SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=0
     SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE="''"
     {% if held_print %}
+        _AFC_TOOLMAP_FEED_EMPTY_LANES
         _AFC_TOOLMAP_START_PRINT_BASE {held_print}
     {% endif %}
 

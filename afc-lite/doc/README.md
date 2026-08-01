@@ -10,13 +10,12 @@ tracking and changing filament.
 - **Klipper extras** into `klippy/extras/`: `AFC.py`, `AFC_unit.py`, `AFC_lane.py`.
 - **`afc-lite.cfg`**: one `[AFC]`, one `[AFC_unit U1]`, and four `[AFC_lane E0..E3]` mapped to
   `extruder`/`extruder1..3` and the `e0..e3_filament` motion sensors.
-- **`afc-toolmap.cfg`**: the print-start hold below. Installed always, silent unless you turn it
-  on.
+- **`afc-toolmap.cfg`**: the filament to tools mapper and the filament auto loaders below. Installed
+  always, silent unless you turn them on.
 
-## Holding a print until the lane-to-tool map is made
+## Filament to tools mapper
 
-Off by default. Turn it on with the plugin's **Hold a print until the lane-to-tool map is made**
-setting.
+Off by default. Turn it on with the plugin's **Filament to tools mapper** setting.
 
 A print sent from the slicer with "start printing after upload" begins on the printer with no browser
 involved, so neither web interface gets a chance to open its lane assignment dialog and the file runs
@@ -37,6 +36,20 @@ Nothing you wrote is touched. `PRINT_START` is left exactly as it is, so an edit
 the print-start hooks ported from the extended firmware keep working. The hold hangs off the command
 the web interface and the slicer use to start a print, and a print started from the printer's screen
 is not affected at all: the screen asks for the map itself.
+
+## Filament auto loaders
+
+Off by default. Turn it on with the plugin's **Filament auto loaders** setting.
+
+A print started from the printer's screen feeds a lane that has no filament by itself; the same print
+started from a browser or the slicer stops on a filament error instead. With this on, once you have
+said which lane feeds each tool, the printer loads the lanes that print needs and have none, using its
+own loader: it homes, picks the tool up, heats, feeds and cleans, then the print starts.
+
+It acts only on a print that was held for the question above, so it needs **Filament to tools mapper**
+on as well. A
+lane that already has filament is left alone, and so is a lane with no spool in its feeder: put the
+spool in and the print will feed it.
 
 ## A print that uses more tools than the printer has lanes
 

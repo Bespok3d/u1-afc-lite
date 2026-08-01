@@ -31,13 +31,19 @@
         "description": "Hold a print before it starts so the web interface can make the lane-to-tool map: on or off.",
         "required": false,
         "default": "off"
+      },
+      {
+        "name": "AFC_TOOLMAP_FEED",
+        "description": "Feed the lanes a held print uses that hold no filament, once its map has been made: on or off.",
+        "required": false,
+        "default": "off"
       }
     ]
   },
   "config": [
     {
       "key": "AFC_TOOLMAP_ASK",
-      "label": "Hold a print until the lane-to-tool map is made",
+      "label": "Filament to tools mapper",
       "type": "select",
       "options": [
         "off",
@@ -45,6 +51,19 @@
       ],
       "default": "off",
       "hint": "Off by default. On, a print started from the web interface or the slicer never starts until Fluidd or Mainsail has asked which lane feeds each tool, so a print sent straight from the slicer can be mapped without the printer's screen. It waits as long as it takes, and dismissing the question drops the print instead of starting it.",
+      "userEditable": true,
+      "scope": "printer"
+    },
+    {
+      "key": "AFC_TOOLMAP_FEED",
+      "label": "Filament auto loaders",
+      "type": "select",
+      "options": [
+        "off",
+        "on"
+      ],
+      "default": "off",
+      "hint": "Off by default. On, once you have said which lane feeds each tool, the printer loads filament into the lanes that print needs and have none, the same way it does for a print started from its own screen, instead of starting and stopping on a filament error. It only acts on a print it held for the question above, and it leaves a lane alone when there is no spool in its feeder.",
       "userEditable": true,
       "scope": "printer"
     }
