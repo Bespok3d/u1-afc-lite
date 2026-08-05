@@ -2,7 +2,7 @@
   "name": "afc-lite",
   "title": "AFC Lite (Automated Filament Changer)",
   "version": "0.1.10",
-  "license": "GPL-3.0-only",
+  "license": "https://github.com/Bespok3d/u1-afc-lite/blob/dev/afc-lite/doc/LICENSE",
   "author": "bespoked",
   "description": "Lightweight Automated Filament Changer support for the Snapmaker U1's four toolheads. Ships the AFC, AFC_unit and AFC_lane Klipper extras plus an afc.cfg that maps the four lanes (E0-E3) to the U1 extruders and filament motion sensors, and adds gcode macros for color, material, vendor, map, spool id, weight, tool change and lane/tool unload. Per-lane state feeds the U1's SET_PRINT_FILAMENT_CONFIG so the slicer and screen track what is loaded.",
   "tagline": "Four-lane filament tracking and tool-change macros for the U1.",
@@ -103,5 +103,6 @@
     ]
   },
   "conflict_resolutions": [],
-  "files": []
+  "files": [],
+  "attributions": "# Attributions - afc-lite\n\n**Plugin author:** paxx12 (Extended Firmware overlay `31-feature-afc-lite`) and Bespok3d, extended from that overlay\n\nKlipper support for an AFC filament changer.\n\n| Upstream project | Author | Licence | Needed at runtime | Code ships in this package |\n| --- | --- | --- | --- | --- |\n| Extended Firmware overlay `31-feature-afc-lite` | paxx12 | GPL-3.0 | no | yes |\n\nThe Klipper extras in this package come from the Extended Firmware overlay `31-feature-afc-lite`\n(paxx12), GPL-3.0. `AFC_unit.py` ships unchanged. `AFC.py` and `AFC_lane.py` are that overlay's\nfiles extended here; about half of what this plugin ships is still that overlay's code.\n"
 }
