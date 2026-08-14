@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.11
+
+- Hitting "clear all spools" in Spoolman now empties the AFC panel too. Before, it cleared Spoolman
+  and the printer, but every lane on the AFC panel kept showing the roll that was in it, brand and
+  name included, even after a refresh.
+- A lane holding a spool the printer cannot identify now shows as having no spool, instead of
+  keeping the last roll it knew.
+- Both need the Spoolman plugin 0.1.34 or newer: that is what tells the lane it is empty. Taking a
+  spool off a lane worked before and still does.
+
 ## 0.1.10
 
 - New, off by default: the printer can hold a print and ask which lane feeds each tool before it

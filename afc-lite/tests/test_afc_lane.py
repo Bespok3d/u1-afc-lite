@@ -92,6 +92,29 @@ def test_rfid_tag_id_used_when_present(monkeypatch, tmp_path):
     assert lane._resolve_spool_id({"loaded": False}) == 77
 
 
+def test_a_spool_taken_off_a_lane_stays_off_it(monkeypatch, tmp_path):
+    """Clear all spools empties the lane even while the tagged spool is still sitting in it: the
+    tag file is the RFID reader's and no clear ever rewrites it, so a fallback to it would put the
+    spool the user just cleared straight back on the panel."""
+    rfid = tmp_path / "rfid.json"
+    rfid.write_text(json.dumps({"0": {"SPOOL_ID": "77"}}))
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(rfid))
+    lane = make_lane(0)
+    lane.spool_id = 77
+    lane.filament_name = "ELEGOO RAPID PETG Black"
+    lane.spool_id = None
+    assert lane._resolve_spool_id({"loaded": True}) is None
+    assert lane.filament_name == ""
+
+
+def test_a_tagged_lane_nobody_cleared_still_shows_its_spool(monkeypatch, tmp_path):
+    rfid = tmp_path / "rfid.json"
+    rfid.write_text(json.dumps({"0": {"SPOOL_ID": "77"}}))
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(rfid))
+    lane = make_lane(0)
+    assert lane._resolve_spool_id({"loaded": True}) == 77
+
+
 class FakeMacro:
     def __init__(self, spool_id):
         self.variables = {"spool_id": spool_id}

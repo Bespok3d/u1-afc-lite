@@ -43,7 +43,8 @@ class AFCLane:
         self.toolhead_sensor = None
         self.filament_feed = None
 
-        self.spool_id = None
+        self.spool_id_from_spoolman: Any = None
+        self.spoolman_has_spoken_for_this_lane = False
         self.filament_name = ""
         self._rfid_cache: dict = {}
         self._rfid_mtime: float | None = None
@@ -156,6 +157,21 @@ class AFCLane:
             self._rfid_cache, self._rfid_mtime = self._read_rfid_file(), mtime
         return self._rfid_cache
 
+    @property
+    def spool_id(self) -> Any:
+        """The spool the Spoolman bridge (or SET_SPOOL_ID) put on this lane, None once taken off."""
+        return self.spool_id_from_spoolman
+
+    @spool_id.setter
+    def spool_id(self, spool_id: Any) -> None:
+        """Once Spoolman has spoken for a lane it is the only word on it, taking a spool off
+        included: otherwise "clear all spools" would leave the tag's own id on the panel, since the
+        tag file belongs to the RFID reader and no clear ever touches it."""
+        self.spool_id_from_spoolman = spool_id
+        self.spoolman_has_spoken_for_this_lane = True
+        if coerce_spool_id(spool_id) is None:
+            self.filament_name = ""
+
     def _rfid_spool_id(self) -> int | None:
         entry = self._rfid_data().get(str(self.lane_index))
         if not isinstance(entry, dict):
@@ -202,15 +218,13 @@ class AFCLane:
         return {'filament_name': self.filament_name} if self.filament_name else {}
 
     def _resolve_spool_id(self, state: dict) -> int | None:
-        """First real id wins: direct (helper push / SET_SPOOL_ID), then RFID tag, then the spool
-        picked for the lane's tool in the Spoolman panel; else nothing. A screen pick with no
-        Spoolman carries its NAME on `filament_name` (pushed by the Spoolman bridge), never a
-        synthetic spool id."""
-        candidates = (
-            coerce_spool_id(self.spool_id),
-            self._rfid_spool_id(),
-            self._tool_spool_id(state),
-        )
+        """Spoolman's word is final for a lane it has spoken for, an empty lane included. With no
+        word from it: the RFID tag, then the spool picked for the lane's tool in the Spoolman panel,
+        else nothing. A screen pick with no Spoolman carries its NAME on `filament_name` (pushed by
+        the Spoolman bridge), never a synthetic spool id."""
+        if self.spoolman_has_spoken_for_this_lane:
+            return coerce_spool_id(self.spool_id_from_spoolman)
+        candidates = (self._rfid_spool_id(), self._tool_spool_id(state))
         return next((value for value in candidates if value is not None), None)
 
     def get_status(self, eventtime=None):
