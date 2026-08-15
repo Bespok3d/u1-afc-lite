@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.12
+
+- A lane now carries the full filament name the printer read off the reel, brand, material and
+  sub-type, with no Spoolman and no Spoolman plugin installed at all. Before, a lane showed a name
+  only when the Spoolman plugin put one there, so on a printer without it the card said nothing
+  more than the material.
+- A lane linked to a Spoolman spool still shows that spool's name, because Spoolman knows more
+  about a roll than the tag does.
+- The lane's spool picker lists what Spoolman has now, so a spool you added a minute ago is in it
+  without reloading the page. That one arrives with the Bespok3d Fluidd or Mainsail plugin, which is
+  what draws the picker.
+- A lane with no filament in it stays unnamed, and so does a reel whose tag does not say what
+  material it is.
+- Three buttons in the panel header, next to the unit name: clear all spools, detect spools, clear
+  active. They fix what the printer thinks is loaded without typing gcode into the console. Clear all
+  spools asks before it forgets every lane.
+- A bar of three buttons under every lane: add a spool, write the tag onto a spool, link the tag to a
+  spool. Add makes a new Spoolman spool out of the tag on the lane and puts it on the lane; the other
+  two ask you to pick a spool from the list your web interface already shows, then write the tag's
+  data onto it or tie the tag to it. Add greys out on a lane whose spool Spoolman already has.
+- The bar opens itself on a lane whose spool Spoolman does not know, which is when there is something
+  to do, and sits collapsed as a thin strip otherwise. Click the strip to open or close it; the arrow
+  on it points the way the bar will move.
+- Adding a spool tells you when the new spool has no weight in Spoolman, and asks you to open that
+  filament in Spoolman and give it one. Without a weight nothing can track what is left on the reel.
+- The store page shows all of this, button by button, with pictures of each step.
+- The buttons need the Bespok3d Fluidd or Mainsail plugin, which draws them, and the Bespok3d
+  Spoolman plugin, whose commands they send. Without those the panel looks exactly as it did.
+- A lane no longer claims to hold 1000 g. The printer cannot weigh a lane, so every card showed a
+  full roll whatever was actually on it; now the card shows no weight at all. A lane on a Spoolman
+  spool still shows how much Spoolman says is left.
+
 ## 0.1.11
 
 - Hitting "clear all spools" in Spoolman now empties the AFC panel too. Before, it cleared Spoolman

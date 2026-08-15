@@ -195,6 +195,96 @@ def test_filament_name_emitted_only_when_enriched():
     assert lane.get_status()["filament_name"] == "ZIRO Silk Gold"
 
 
+class FakePrintTaskConfig:
+    """The printer's own tag read, one entry per lane, as print_task_config publishes it."""
+
+    def __init__(self, vendors, types, subtypes, present=(True, True, True, True)):
+        self._status = {
+            "filament_vendor": list(vendors),
+            "filament_type": list(types),
+            "filament_sub_type": list(subtypes),
+            "filament_exist": list(present),
+        }
+
+    def get_status(self, eventtime=None):
+        return self._status
+
+
+def lane_reading_its_tag(lane_index, vendors, types, subtypes, present=(True, True, True, True)):
+    lane = make_lane(lane_index)
+    lane.print_task_config = FakePrintTaskConfig(vendors, types, subtypes, present)
+    return lane
+
+
+TAGS_ON_FOUR_LANES = (
+    ("QIDI", "ELEGOO", "Jayo", "eSun"),
+    ("PLA", "PLA+", "PLA", "PETG"),
+    ("Matte", "Rapid", "Basic", "Basic"),
+)
+
+
+def test_the_tag_names_the_lane_with_no_spoolman_bridge_installed(monkeypatch, tmp_path):
+    """Without the bridge nothing pushed a name, so the card showed whatever bare name Spoolman
+    had, or nothing at all. The three words the printer already read off the reel name it."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(0, *TAGS_ON_FOUR_LANES)
+    assert lane.get_status()["filament_name"] == "QIDI PLA Matte"
+
+
+def test_each_lane_is_named_from_its_own_reel(monkeypatch, tmp_path):
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(3, *TAGS_ON_FOUR_LANES)
+    assert lane.get_status()["filament_name"] == "eSun PETG Basic"
+
+
+def test_the_bridge_name_wins_over_the_tag(monkeypatch, tmp_path):
+    """The bridge reads the whole spool record and the tag holds three words, so a lane the user
+    linked to a Spoolman spool keeps the name that spool gives it."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(2, *TAGS_ON_FOUR_LANES)
+    lane.filament_name = "JAYO PLA High Speed"
+    assert lane.get_status()["filament_name"] == "JAYO PLA High Speed"
+
+
+def test_a_lane_reports_no_weight_because_nothing_on_the_printer_weighs_one(monkeypatch, tmp_path):
+    """Every card read 1000 g whatever was on the lane, because the lane reported a made up full
+    roll. With no weight reported the card shows nothing, and a lane on a Spoolman spool still
+    shows what Spoolman has left, which the panel reads from Spoolman itself."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(0, *TAGS_ON_FOUR_LANES)
+    assert "weight" not in lane.get_status()
+
+
+def test_a_reel_the_tag_says_nothing_about_names_no_lane(monkeypatch, tmp_path):
+    """A brand on its own tells nobody what is in the lane, and the material is what a slicer
+    matches on, so a tag with no material leaves the panel its own display."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(
+        1, ("QIDI", "ELEGOO", "Jayo", "eSun"), ("PLA", "NONE", "PLA", "PETG"),
+        ("Matte", "NONE", "Basic", "Basic"),
+    )
+    assert "filament_name" not in lane.get_status()
+
+
+def test_an_unbranded_reel_is_still_named_by_its_material(monkeypatch, tmp_path):
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(
+        0, ("NONE", "ELEGOO", "Jayo", "eSun"), ("PETG", "PLA+", "PLA", "PETG"),
+        ("NONE", "Rapid", "Basic", "Basic"),
+    )
+    assert lane.get_status()["filament_name"] == "PETG"
+
+
+def test_an_empty_lane_is_not_named_by_the_reel_that_left_it(monkeypatch, tmp_path):
+    """The tag data the printer holds outlives the reel, so naming a lane with no filament in it
+    would put a spool back on the card the user had just taken out."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(
+        0, *TAGS_ON_FOUR_LANES, present=(False, True, True, True)
+    )
+    assert "filament_name" not in lane.get_status()
+
+
 def test_missing_rfid_file_is_not_a_crash(monkeypatch, tmp_path):
     monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "nope.json"))
     lane = make_lane(0)

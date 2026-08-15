@@ -8,6 +8,7 @@ from typing import Any
 
 RFID_DATA_FILE = "/oem/printer_data/config/bespok3d/data/rfid_data.json"
 TOOL_COUNT_MACRO = "gcode_macro AFC_TOOLS_IN_PLAY"
+NOTHING_THE_TAG_KNOWS = "NONE"
 
 
 class AFCLaneState:
@@ -25,6 +26,21 @@ def coerce_spool_id(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return number or None
+
+
+def name_the_tag_gives(state: dict) -> str:
+    """The filament description the printer's own tag read gives a lane: brand, material, sub-type,
+    the same three words in the same order the Spoolman bridge publishes, so the card reads the
+    same with the bridge and without it.
+
+    Empty when the reel is out, and empty when the tag names no material: a brand on its own tells
+    nobody what is in the lane, and it is the material a slicer matches on."""
+    if not state.get('loaded', False):
+        return ""
+    if state.get('type', NOTHING_THE_TAG_KNOWS) == NOTHING_THE_TAG_KNOWS:
+        return ""
+    words = (state.get('vendor'), state.get('type'), state.get('subtype'))
+    return " ".join(word for word in words if word and word != NOTHING_THE_TAG_KNOWS)
 
 
 class AFCLane:
@@ -211,11 +227,15 @@ class AFCLane:
         mounted = self._mounted()
         return {} if mounted is None else {'mounted': mounted}
 
-    def _filament_name_field(self) -> dict:
-        """A vendor+name display label pushed by the Spoolman bridge (SET_LANE_FILAMENT_NAME).
-        Emitted only when enriched, so the panel falls back to its own spool.filament.name when the
-        bridge is absent (default display preserved)."""
-        return {'filament_name': self.filament_name} if self.filament_name else {}
+    def _filament_name_field(self, state: dict) -> dict:
+        """The filament description the printer publishes for this lane to the slicer. A name the
+        Spoolman bridge pushed (SET_LANE_FILAMENT_NAME) wins, because it reads the whole spool
+        record and the tag holds three words; with no bridge installed the printer's own tag read
+        names the lane.
+        Emitted only when there is a name at all, so a lane neither of them can name still falls
+        back to the panel's own spool.filament.name (default display preserved)."""
+        name = self.filament_name or name_the_tag_gives(state)
+        return {'filament_name': name} if name else {}
 
     def _resolve_spool_id(self, state: dict) -> int | None:
         """Spoolman's word is final for a lane it has spoken for, an empty lane included. With no
@@ -244,12 +264,14 @@ class AFCLane:
         response['material'] = state.get('type', 'NONE')
         response['spool_id'] = self._resolve_spool_id(state)
         response['color'] = f"#{state.get('color', 'FFFFFFFF')[:6]}" # RGB only, ignore alpha
-        response['weight'] = 1000 # AFC doesn't track weight
+        # No weight: the U1 weighs nothing on a lane, and the panel reads a lane's remaining weight
+        # off Spoolman when there is a spool. The number this used to report was invented, and it
+        # read on every card as a full roll nobody had measured.
         response['runout_lane'] = state.get('runout_lane', '?')
         response['filament_status'] = 'unknown'
         response['filament_status_led'] = 'gray'
         response['status'] = AFCLaneState.EMPTY
-        response.update({**self._mounted_field(), **self._filament_name_field()})
+        response.update({**self._mounted_field(), **self._filament_name_field(state)})
         return response
 
 def load_config_prefix(config):

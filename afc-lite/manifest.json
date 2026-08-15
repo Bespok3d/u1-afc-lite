@@ -1,7 +1,7 @@
 {
   "name": "afc-lite",
   "title": "AFC Lite (Automated Filament Changer)",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "license": "https://github.com/Bespok3d/u1-afc-lite/blob/dev/afc-lite/doc/LICENSE",
   "author": "bespoked",
   "description": "Lightweight Automated Filament Changer support for the Snapmaker U1's four toolheads. Ships the AFC, AFC_unit and AFC_lane Klipper extras plus an afc.cfg that maps the four lanes (E0-E3) to the U1 extruders and filament motion sensors, and adds gcode macros for color, material, vendor, map, spool id, weight, tool change and lane/tool unload. Per-lane state feeds the U1's SET_PRINT_FILAMENT_CONFIG so the slicer and screen track what is loaded.",
@@ -11,7 +11,7 @@
   "printer_specific": true,
   "changelog": "doc/CHANGELOG.md",
   "published_at": "2026-06-08",
-  "updated_at": "2026-08-01",
+  "updated_at": "2026-08-15",
   "source": "https://github.com/Bespok3d/u1-afc-lite",
   "publisher": "PLACEHOLDER",
   "provides": [

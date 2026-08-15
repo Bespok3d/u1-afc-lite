@@ -84,6 +84,56 @@ RFID tag, then the spool you pick for the lane's tool in the Spoolman panel's "C
 dropdown, then a synthetic per-lane id when stock firmware reports the lane loaded. So a spool you
 select by hand (no RFID) shows up in AFC too.
 
+## Spool buttons in the AFC panel
+
+Fluidd and Mainsail both draw these, the same buttons in the same order, once the Bespok3d plugin for
+that interface is installed. They show up only on a printer running the Bespok3d Spoolman plugin,
+because they are its commands.
+
+Three buttons sit in the panel header, next to the unit name:
+
+![Clear all spools, Detect spools, Clear active](images/top_buttons.png)
+
+They fix what the printer thinks is loaded without typing gcode. **Clear all spools** forgets the
+spool on every lane, and asks before it does. **Detect spools** looks at the lanes again and puts
+each one's spool back from what the printer reports and the tags it has read. **Clear active**
+forgets which spool the printer is drawing from, the one a print counts its filament against.
+
+Under each lane sits a bar of three buttons:
+
+![Add spool, write the tag onto a spool, link the tag to a spool](images/toolbar_active_add.png)
+
+- **+** makes a new Spoolman spool out of the tag on the lane, ties the tag to it and puts it on the
+  lane.
+- The **arrow** asks you to pick a spool, then writes the tag's data onto it.
+- The **link** asks you to pick a spool, then ties the tag to it.
+
+Once the lane's spool is in Spoolman there is nothing left to add, and **+** greys out:
+
+![the same bar with the plus greyed out](images/toolbar_inactive_add.png)
+
+The bar opens itself on a lane whose spool Spoolman does not know, which is when there is something
+to do, and sits collapsed as a thin strip otherwise. Click the strip to open or close it. The arrow
+on the strip points the way the bar will move: up while the buttons are showing, down while they are
+hidden.
+
+## Adding a spool Spoolman does not know
+
+The lane reads the reel's tag, so the card names it. The weight line shows a dash, because nothing
+yet knows what is on the reel:
+
+![a lane holding a tagged spool that is not in Spoolman](images/new_spool.png)
+
+Press **+** and the spool is made in Spoolman out of the tag. Spoolman can say what is left on a
+spool only when the filament it is made of carries a weight, so a filament with none can never be
+tracked, and the message says so:
+
+![Spool added. Its filament has no weight in Spoolman, so what is left on the spool cannot be tracked. Open that filament in Spoolman and give it a weight.](images/missing_weight_allert.png)
+
+Open that filament in Spoolman, give it a weight, and the lane shows what is left on the reel:
+
+![a lane on a Spoolman spool showing 1000 g](images/complete_spool.png)
+
 ## Panel button behavior
 
 Each lane has two controls: a left button that toggles between Load and Unload, and a right Eject
