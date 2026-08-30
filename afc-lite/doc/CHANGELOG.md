@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.13
+
+- AFC Lite now installs the RFID Spool Reader alongside it. AFC Lite tells the printer what filament
+  a lane holds, and stock the printer answers that by throwing the lane's pressure advance away and
+  using its own material table value instead, mid print included. The reader plugin carries the fix
+  for that, so the two now travel together and a tuned lane keeps its number.
+
 ## 0.1.12
 
 - A lane now carries the full filament name the printer read off the reel, brand, material and
