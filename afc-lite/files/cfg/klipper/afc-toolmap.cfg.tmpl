@@ -99,4 +99,6 @@ description: The question was dismissed, drop the print that was held back witho
 gcode:
     SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=0
     SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=held_print VALUE="''"
+    # The dropped print's tools would otherwise stay on the lanes of an idle printer.
+    SET_GCODE_VARIABLE MACRO=AFC_TOOLS_IN_PLAY VARIABLE=count VALUE=0
     RESPOND MSG="The lane assignment was dismissed, the print was not started."

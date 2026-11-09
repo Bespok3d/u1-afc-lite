@@ -72,9 +72,10 @@ covers it under "Limits worth knowing about".
 - `TOOL_UNLOAD` (Unload button) unloads filament.
 - `LANE_UNLOAD` (Eject button) docks (parks) the tool via `PARK_EXTRUDER`. It moves no filament.
 - `AFC_TOOLS_IN_PLAY COUNT=<n>` says how many of the printer's 32 logical tools the file about to
-  print uses. The web interface sends it when it opens the lane assignment dialog, because only the
-  browser has the file. Without it a lane cannot tell a tool the print does not use from one mapped
-  to it, and the panel lists every unused tool on the first lane.
+  print uses. The web interface sends it when it opens the lane assignment dialog, so the lanes show
+  the map while you make it. Once a print runs, each lane reads the tools from the file itself, so a
+  print started from the screen or a slicer shows the right tools too. The count goes back to 0 when
+  the print ends or the held print is dismissed. Between prints no lane shows a tool.
 
 ## Filament names
 

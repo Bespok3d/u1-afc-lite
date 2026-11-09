@@ -336,11 +336,11 @@ def test_the_first_lane_does_not_claim_the_tools_the_file_never_uses():
     assert lane._mapped_tools({"extruder_map_table": six_tools_over_four_lanes}) == ["T0", "T4"]
 
 
-def test_with_no_file_in_play_a_lane_reports_its_own_tool():
-    """Nothing declared means no file is being started, so a lane says what it always says rather
-    than reading a stale table."""
+def test_with_no_print_in_play_a_lane_reports_no_tool():
+    """Between prints the printer holds its default map, so the panel showed T0 on the first lane,
+    T1 on the second and so on, a map no print had asked for."""
     lane = make_lane(3)
-    assert lane._mapped_tools({"extruder_map_table": [0] * 32}) == ["T3"]
+    assert lane._mapped_tools({"extruder_map_table": [0, 1, 2, 3] + [0] * 28}) == []
 
 
 def test_the_spool_of_a_lane_feeding_several_tools_is_the_first_one_picked(monkeypatch, tmp_path):
@@ -348,3 +348,148 @@ def test_the_spool_of_a_lane_feeding_several_tools_is_the_first_one_picked(monke
     lane = make_lane(3)
     lane.printer = MacroPrinter("T5", FakeMacro(42))
     assert lane._resolve_spool_id({"loaded": True, "map": ["T3", "T5"]}) == 42
+
+
+class FakeVirtualSdcard:
+    def __init__(self, file_path):
+        self._file_path = file_path
+
+    def file_path(self):
+        return self._file_path
+
+
+class ObjectsPrinter(FakePrinter):
+    """A printer holding the named Klipper objects, None for every other lookup."""
+
+    def __init__(self, objects):
+        self._objects = objects
+
+    def lookup_object(self, name, default=None):
+        return self._objects.get(name, default)
+
+
+class FakeGcodeMacro:
+    def __init__(self, **variables):
+        self.variables = variables
+
+    def get_status(self, eventtime=None):
+        return self.variables
+
+
+def gcode_file(tmp_path, header_lines, name="print.gcode"):
+    path = tmp_path / name
+    header = "".join(f"{line}\n" for line in header_lines)
+    path.write_text(f"; HEADER_BLOCK_START\n{header}G28\n")
+    return str(path)
+
+
+def lane_printing(lane_index, file_path, objects=None):
+    lane = make_lane(lane_index)
+    lane.printer = ObjectsPrinter(objects or {})
+    lane.virtual_sdcard = FakeVirtualSdcard(file_path)
+    return lane
+
+
+def test_the_header_lists_tools_from_filament_numbers():
+    two_tool_header = "; filament_density: 1.24,1.27\n; filament: 2,1\n"
+    assert AFC_lane.tools_the_header_lists(two_tool_header) == [0, 1]
+    assert AFC_lane.tools_the_header_lists("; filament: 2,3,4,5,6,1\r\n") == [0, 1, 2, 3, 4, 5]
+
+
+def test_a_file_without_a_filament_list_names_no_tools():
+    unlisted_header = "; filament_density: 1.24\n; filament_diameter: 1.75\n"
+    assert AFC_lane.tools_the_header_lists(unlisted_header) is None
+
+
+def test_a_print_started_from_the_screen_shows_its_tool_on_the_lane_feeding_it(tmp_path):
+    """A screen or slicer print declares no tool count, so every lane fell back to its own tool and
+    the panel showed T0 on the first lane while the printer fed T0 from the second."""
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    t0_on_the_second_lane = {"extruder_map_table": [1, 1, 2, 3] + [0] * 28}
+    lanes = [lane_printing(lane_index, single_tool_file) for lane_index in range(4)]
+    assert [lane._mapped_tools(t0_on_the_second_lane) for lane in lanes] == [[], ["T0"], [], []]
+
+
+def test_every_lane_shows_the_tool_a_four_tool_print_feeds_from_it(tmp_path):
+    four_tool_file = gcode_file(tmp_path, ["; filament: 1,2,3,4"])
+    shuffled_map = {"extruder_map_table": [2, 3, 1, 0] + [0] * 28}
+    lanes = [lane_printing(lane_index, four_tool_file) for lane_index in range(4)]
+    assert [lane._mapped_tools(shuffled_map) for lane in lanes] == [["T3"], ["T2"], ["T0"], ["T1"]]
+
+
+def test_the_file_wins_over_a_count_declared_for_another_print(tmp_path):
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    count_for_another_print = {AFC_lane.TOOL_COUNT_MACRO: FakeGcodeMacro(count=4)}
+    lane = lane_printing(0, single_tool_file, count_for_another_print)
+    assert lane._mapped_tools({"extruder_map_table": [0, 0, 0, 0] + [0] * 28}) == ["T0"]
+
+
+def test_a_file_that_lists_no_tools_falls_back_to_the_declared_count(tmp_path):
+    unlisted_file = gcode_file(tmp_path, ["; filament_density: 1.24"])
+    lane = lane_printing(1, unlisted_file, {AFC_lane.TOOL_COUNT_MACRO: FakeGcodeMacro(count=2)})
+    assert lane._mapped_tools({"extruder_map_table": [1, 1] + [0] * 30}) == ["T0", "T1"]
+
+
+def test_the_file_is_read_once_per_print(tmp_path, monkeypatch):
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    lane = lane_printing(1, single_tool_file)
+    reads = []
+    real_read = AFC_lane.read_tools_the_file_uses
+
+    def counted_read(file_path):
+        reads.append(file_path)
+        return real_read(file_path)
+
+    monkeypatch.setattr(AFC_lane, "read_tools_the_file_uses", counted_read)
+    status = {"extruder_map_table": [1] + [0] * 31}
+    assert lane._mapped_tools(status) == lane._mapped_tools(status) == ["T0"]
+    assert len(reads) == 1
+
+
+def test_a_finished_print_forgets_the_tool_count_it_declared():
+    """The count outlived the print, so after a browser print every idle lane claimed tools again
+    off the printer's default map."""
+    count_macro = FakeGcodeMacro(count=3)
+    lane = make_lane(0)
+    lane.printer = ObjectsPrinter({AFC_lane.TOOL_COUNT_MACRO: count_macro})
+    lane._forget_declared_tools()
+    assert count_macro.variables == {"count": 0}
+    assert lane._mapped_tools({"extruder_map_table": [0, 1, 2, 3] + [0] * 28}) == []
+
+
+def test_an_idle_lane_still_owns_the_spool_picked_for_its_own_tool(monkeypatch, tmp_path):
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = make_lane(3)
+    lane.printer = MacroPrinter("T3", FakeMacro(99))
+    assert lane._resolve_spool_id({"loaded": True, "map": []}) == 99
+
+
+class ColorPrintTaskConfig:
+    def __init__(self, color_multi, rgba):
+        self._status = {"filament_color_multi": color_multi, "filament_color_rgba": rgba,
+                        "filament_exist": [True] * 4}
+
+    def get_status(self, eventtime=None):
+        return self._status
+
+
+def test_a_multi_colour_reel_shows_all_its_colours(monkeypatch, tmp_path):
+    """The lane reported only the first colour of a reel the printer knows has four."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    four_colours = {"nums": 4, "alpha": 255, "mode": 0,
+                    "colors": ["30D68B", "E736D4", "A8C70C", "CC580A"]}
+    single = {"nums": 1, "alpha": 255, "mode": 0, "colors": ["FFFFFF"]}
+    lane = make_lane(1)
+    lane.print_task_config = ColorPrintTaskConfig([single, four_colours, single, single],
+                                                  ["FFFFFFFF", "30D68BFF", "FFFFFFFF", "FFFFFFFF"])
+    status = lane.get_status()
+    assert status["colors"] == ["#30D68B", "#E736D4", "#A8C70C", "#CC580A"]
+    assert status["color"] == "#30D68B"
+
+
+def test_a_single_colour_reel_reports_its_one_colour(monkeypatch, tmp_path):
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = make_lane(0)
+    orange_on_the_first_lane = ["EE5911FF", "FFFFFFFF", "FFFFFFFF", "FFFFFFFF"]
+    lane.print_task_config = ColorPrintTaskConfig([], orange_on_the_first_lane)
+    assert lane.get_status()["colors"] == ["#EE5911"]

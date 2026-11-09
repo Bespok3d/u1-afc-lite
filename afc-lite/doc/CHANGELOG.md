@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.14
+
+- Each lane now shows the tools the printer really feeds from it, whoever started the print: the
+  printer screen, a slicer, a browser or the cloud. Before, a print started anywhere but the browser
+  dialog showed T0 on the first lane, T1 on the second and so on, even when the printer fed T0 from
+  another lane.
+- A lane the print does not use shows no tool, and between prints no lane shows a tool. Before, an
+  idle printer showed T0 to T3 on the four lanes, a map no print had asked for.
+- A lane with a multi-colour reel now reports all its colours, not only the first one.
+
 ## 0.1.13
 
 - AFC Lite now installs the RFID Spool Reader alongside it. AFC Lite tells the printer what filament

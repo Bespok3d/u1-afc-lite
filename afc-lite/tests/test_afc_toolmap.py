@@ -177,6 +177,12 @@ def test_dismissing_the_question_drops_the_print_instead_of_starting_it():
     assert "_AFC_TOOLMAP_START_PRINT_BASE" not in body
 
 
+def test_a_dismissed_print_leaves_no_tools_on_the_idle_lanes():
+    """The count declared for the dropped print kept its tools on the lanes of an idle printer."""
+    body = macro_body("AFC_TOOLMAP_CANCEL")
+    assert "SET_GCODE_VARIABLE MACRO=AFC_TOOLS_IN_PLAY VARIABLE=count VALUE=0" in body
+
+
 def test_releasing_the_hold_runs_the_print():
     body = macro_body("AFC_TOOLMAP_GO")
     assert "SET_GCODE_VARIABLE MACRO=_AFC_TOOLMAP VARIABLE=holding_for_map VALUE=0" in body

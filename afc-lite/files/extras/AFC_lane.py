@@ -4,11 +4,15 @@
 
 import json
 import os
+import re
 from typing import Any
 
 RFID_DATA_FILE = "/oem/printer_data/config/bespok3d/data/rfid_data.json"
 TOOL_COUNT_MACRO = "gcode_macro AFC_TOOLS_IN_PLAY"
 NOTHING_THE_TAG_KNOWS = "NONE"
+# The slicer writes the list of filaments a file uses near its top; a few kilobytes reach it.
+HEADER_BYTES_TO_SCAN = 4096
+SLICER_FILAMENT_LIST = re.compile(r"^; filament: *([0-9][0-9, ]*)\r?$", re.MULTILINE)
 
 
 class AFCLaneState:
@@ -26,6 +30,33 @@ def coerce_spool_id(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return number or None
+
+
+def tools_the_header_lists(header: str) -> list[int] | None:
+    """The logical tools a file uses, from the slicer's `; filament: 2,1` header line, which counts
+    filaments from 1 in the order the print first uses them. None when the file carries no such
+    line, so the caller can tell "this file names no tools" from "this file uses none"."""
+    match = SLICER_FILAMENT_LIST.search(header)
+    if match is None:
+        return None
+    filament_numbers = (int(word) for word in match.group(1).split(",") if word.strip())
+    return sorted({number - 1 for number in filament_numbers if number > 0})
+
+
+def read_tools_the_file_uses(file_path: str) -> list[int] | None:
+    try:
+        with open(file_path, encoding="utf-8", errors="replace") as handle:
+            return tools_the_header_lists(handle.read(HEADER_BYTES_TO_SCAN))
+    except OSError:
+        return None
+
+
+def lane_colors(color_multi: dict) -> list[str]:
+    """Every colour of the reel in a lane, as the printer holds it since firmware 2.0: a reel can
+    carry up to five. Empty when the printer gave none, so the caller keeps its single colour."""
+    color_count = color_multi.get('nums', 0) if isinstance(color_multi, dict) else 0
+    colors = color_multi.get('colors', []) if color_count else []
+    return [f"#{color[:6]}" for color in colors[:color_count] if isinstance(color, str)]
 
 
 def name_the_tag_gives(state: dict) -> str:
@@ -56,6 +87,7 @@ class AFCLane:
         self.filament_feed_name = config.get("filament_feed", None)
 
         self.print_task_config = None
+        self.virtual_sdcard = None
         self.toolhead_sensor = None
         self.filament_feed = None
 
@@ -64,14 +96,17 @@ class AFCLane:
         self.filament_name = ""
         self._rfid_cache: dict = {}
         self._rfid_mtime: float | None = None
+        self._file_tools_cache: tuple[Any, list[int] | None] = (None, None)
 
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
+        self.printer.register_event_handler("print_stats:stop", self._forget_declared_tools)
 
     def _handle_connect(self):
         try:
             self.print_task_config = self.printer.lookup_object("print_task_config")
         except Exception:
             pass
+        self.virtual_sdcard = self.printer.lookup_object("virtual_sdcard", None)
 
         if self.filament_feed_name:
             try:
@@ -88,13 +123,50 @@ class AFCLane:
     def _indexed(self, status, key, default):
         return dict(enumerate(status.get(key, []))).get(self.lane_index, default)
 
-    def _tools_in_play(self) -> int:
+    def _declared_tool_count(self) -> int:
         """How many logical tools the file about to print uses, as declared by the web interface
         through the AFC_TOOLS_IN_PLAY macro. Zero when nothing has been declared."""
         macro = self.printer.lookup_object(TOOL_COUNT_MACRO, None)
         if macro is None:
             return 0
         return int(macro.get_status(None).get('count', 0))
+
+    def _forget_declared_tools(self) -> None:
+        """A finished or cancelled print leaves the printer on its default map, so a count the web
+        interface declared for it would make an idle lane claim tools again. Written the way
+        SET_GCODE_VARIABLE writes it, a fresh dict, because the macro hands out the old one."""
+        macro = self.printer.lookup_object(TOOL_COUNT_MACRO, None)
+        variables = getattr(macro, "variables", {})
+        if not variables.get('count'):
+            return
+        macro.variables = {**variables, 'count': 0}
+
+    def _file_in_play(self) -> str | None:
+        """The file the printer is printing or holding paused, whoever started it: the screen, a
+        slicer, a browser or the cloud. None between prints."""
+        if self.virtual_sdcard is None:
+            return None
+        return self.virtual_sdcard.file_path()
+
+    def _tools_the_file_uses(self, file_path: str) -> list[int] | None:
+        try:
+            file_stamp = (file_path, os.stat(file_path).st_mtime)
+        except OSError:
+            return None
+        if self._file_tools_cache[0] != file_stamp:
+            self._file_tools_cache = (file_stamp, read_tools_the_file_uses(file_path))
+        return self._file_tools_cache[1]
+
+    def _tools_in_play(self) -> list[int]:
+        """The logical tools the current print uses, read from the file itself, so a print started
+        from the screen or a slicer is mapped as right as one started from a browser. With no
+        file, or a file that does not list its tools, the count a web interface declared while its
+        print dialog is open; with neither, no tool at all."""
+        file_path = self._file_in_play()
+        tools_in_file = self._tools_the_file_uses(file_path) if file_path else None
+        if tools_in_file is not None:
+            return tools_in_file
+        return list(range(self._declared_tool_count()))
 
     def _mapped_tools(self, status):
         """Every logical tool the printer feeds from this lane. The U1 has 32 logical tools over 4
@@ -107,13 +179,13 @@ class AFCLane:
 
         A lane feeding none of the file's tools reports none. It used to fall back to its own tool,
         which put a tool back on a lane the user had just moved it off, so the assignment could
-        never be emptied and moving another tool in appeared to move the first one away."""
-        tool_count = self._tools_in_play()
-        if not tool_count:
-            return [f"T{self.lane_index}"]
-        tools_in_play = status.get('extruder_map_table', [])[:tool_count]
-        return [f"T{tool_index}" for tool_index, extruder_index in enumerate(tools_in_play)
-                if extruder_index == self.lane_index]
+        never be emptied and moving another tool in appeared to move the first one away.
+
+        With no print in play a lane reports no tool either: between prints the printer holds its
+        default map, T0 on the first lane and so on, which says nothing about any print."""
+        lane_of_tool = dict(enumerate(status.get('extruder_map_table', [])))
+        return [f"T{tool_index}" for tool_index in self._tools_in_play()
+                if lane_of_tool.get(tool_index) == self.lane_index]
 
     def _read_print_task_state(self, state, eventtime):
         status = self.print_task_config.get_status(eventtime)
@@ -122,6 +194,7 @@ class AFCLane:
         state['type'] = self._indexed(status, 'filament_type', 'NONE')
         state['subtype'] = self._indexed(status, 'filament_sub_type', 'NONE')
         state['color'] = self._indexed(status, 'filament_color_rgba', 'FFFFFFFF')
+        state['colors'] = lane_colors(self._indexed(status, 'filament_color_multi', {}))
         if status.get('auto_replenish_filament', False):
             state['runout_lane'] = 'AUTO'
         state['map'] = self._mapped_tools(status)
@@ -138,7 +211,7 @@ class AFCLane:
             'type': 'NONE',
             'subtype': 'NONE',
             'color': 'FFFFFFFF',
-            'map': [f"T{self.lane_index}"],
+            'map': [],
             'runout_lane': 'NONE',
         }
 
@@ -203,8 +276,10 @@ class AFCLane:
     def _tool_spool_id(self, state: dict) -> int | None:
         """Spool the user picked for this lane's tool in the Spoolman panel. The web UI writes it to
         the mapped T<n> macro's `spool_id` variable (SET_GCODE_VARIABLE), never to the lane. One
-        lane can feed several tools, and they all draw the same spool, so the first pick wins."""
-        picks = (self._macro_spool_id(tool) for tool in state.get('map', []))
+        lane can feed several tools, and they all draw the same spool, so the first pick wins.
+        A lane feeding no tool of a print still owns the pick on its own tool, as it always did."""
+        tools = state.get('map') or [f"T{self.lane_index}"]
+        picks = (self._macro_spool_id(tool) for tool in tools)
         return next((spool_id for spool_id in picks if spool_id is not None), None)
 
     def _park_detector_state(self) -> dict | None:
@@ -256,7 +331,7 @@ class AFCLane:
         response['unit'] = self.unit_name
         response['lane'] = self.lane_index
         response['extruder'] = self.extruder_name
-        response['map'] = state.get('map', [f"T{self.lane_index}"])
+        response['map'] = state.get('map', [])
         response['load'] = state.get('loaded', False)
         response['prep'] = state.get('loaded', False)
         response['tool_loaded'] = state.get('tool_loaded', response['load'])
@@ -264,6 +339,7 @@ class AFCLane:
         response['material'] = state.get('type', 'NONE')
         response['spool_id'] = self._resolve_spool_id(state)
         response['color'] = f"#{state.get('color', 'FFFFFFFF')[:6]}" # RGB only, ignore alpha
+        response['colors'] = state.get('colors') or [response['color']]
         # No weight: the U1 weighs nothing on a lane, and the panel reads a lane's remaining weight
         # off Spoolman when there is a spool. The number this used to report was invented, and it
         # read on every card as a full roll nobody had measured.
