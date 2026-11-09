@@ -383,9 +383,14 @@ def gcode_file(tmp_path, header_lines, name="print.gcode"):
     return str(path)
 
 
-def lane_printing(lane_index, file_path, objects=None):
+class FakePrintStats:
+    def __init__(self, state):
+        self.state = state
+
+
+def lane_printing(lane_index, file_path, objects=None, print_state="printing"):
     lane = make_lane(lane_index)
-    lane.printer = ObjectsPrinter(objects or {})
+    lane.printer = ObjectsPrinter({**(objects or {}), "print_stats": FakePrintStats(print_state)})
     lane.virtual_sdcard = FakeVirtualSdcard(file_path)
     return lane
 
@@ -462,6 +467,32 @@ def test_an_idle_lane_still_owns_the_spool_picked_for_its_own_tool(monkeypatch, 
     lane = make_lane(3)
     lane.printer = MacroPrinter("T3", FakeMacro(99))
     assert lane._resolve_spool_id({"loaded": True, "map": []}) == 99
+
+
+def test_a_paused_print_keeps_its_tools_on_the_lanes(tmp_path):
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    lane = lane_printing(1, single_tool_file, print_state="paused")
+    assert lane._mapped_tools({"extruder_map_table": [1] + [0] * 31}) == ["T0"]
+
+
+def test_a_failed_print_leaves_the_lanes_with_no_tool(tmp_path):
+    """A failed print keeps its file loaded, so idle lanes went on showing its tools until the next
+    print started."""
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    lane = lane_printing(0, single_tool_file, print_state="error")
+    assert lane._mapped_tools({"extruder_map_table": [0] * 32}) == []
+
+
+def test_a_lane_feeding_no_tool_of_a_print_shows_no_tool_pick(monkeypatch, tmp_path):
+    """The lane fell back to the pick on its own tool, so with T0 fed from the second lane the
+    first lane showed T0's spool too."""
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    single_tool_file = gcode_file(tmp_path, ["; filament: 1"])
+    t0_spool_pick = {"gcode_macro T0": FakeGcodeMacro(spool_id=42)}
+    lanes = [lane_printing(lane_index, single_tool_file, t0_spool_pick) for lane_index in range(2)]
+    t0_on_the_second_lane = {"extruder_map_table": [1] + [0] * 31}
+    states = [{"loaded": True, "map": lane._mapped_tools(t0_on_the_second_lane)} for lane in lanes]
+    assert [lane._resolve_spool_id(state) for lane, state in zip(lanes, states)] == [None, 42]
 
 
 class ColorPrintTaskConfig:

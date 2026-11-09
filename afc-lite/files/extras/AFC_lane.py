@@ -9,6 +9,9 @@ from typing import Any
 
 RFID_DATA_FILE = "/oem/printer_data/config/bespok3d/data/rfid_data.json"
 TOOL_COUNT_MACRO = "gcode_macro AFC_TOOLS_IN_PLAY"
+# A print that failed keeps its file loaded on the U1 (only a finished or cancelled print closes
+# it), so a loaded file alone does not mean a print is in play.
+PRINT_STATES_WITH_A_FILE_IN_PLAY = ("printing", "paused")
 NOTHING_THE_TAG_KNOWS = "NONE"
 # The slicer writes the list of filaments a file uses near its top; a few kilobytes reach it.
 HEADER_BYTES_TO_SCAN = 4096
@@ -144,9 +147,15 @@ class AFCLane:
     def _file_in_play(self) -> str | None:
         """The file the printer is printing or holding paused, whoever started it: the screen, a
         slicer, a browser or the cloud. None between prints."""
-        if self.virtual_sdcard is None:
+        if self.virtual_sdcard is None or not self._print_in_play():
             return None
         return self.virtual_sdcard.file_path()
+
+    def _print_in_play(self) -> bool:
+        print_stats = self.printer.lookup_object("print_stats", None)
+        if print_stats is None:
+            return False
+        return print_stats.state in PRINT_STATES_WITH_A_FILE_IN_PLAY
 
     def _tools_the_file_uses(self, file_path: str) -> list[int] | None:
         try:
@@ -273,13 +282,21 @@ class AFCLane:
             return None
         return coerce_spool_id(getattr(macro, "variables", {}).get("spool_id"))
 
+    def _tools_owning_the_pick(self, state: dict) -> list[str]:
+        """Between prints the printer holds its default map, so a lane owns the pick on its own
+        tool. During a print a lane feeding none of its tools owns no pick: its own tool may be fed
+        from another lane, and the same spool would show on both."""
+        if state.get('map'):
+            return state['map']
+        if self._tools_in_play():
+            return []
+        return [f"T{self.lane_index}"]
+
     def _tool_spool_id(self, state: dict) -> int | None:
         """Spool the user picked for this lane's tool in the Spoolman panel. The web UI writes it to
         the mapped T<n> macro's `spool_id` variable (SET_GCODE_VARIABLE), never to the lane. One
-        lane can feed several tools, and they all draw the same spool, so the first pick wins.
-        A lane feeding no tool of a print still owns the pick on its own tool, as it always did."""
-        tools = state.get('map') or [f"T{self.lane_index}"]
-        picks = (self._macro_spool_id(tool) for tool in tools)
+        lane can feed several tools, and they all draw the same spool, so the first pick wins."""
+        picks = (self._macro_spool_id(tool) for tool in self._tools_owning_the_pick(state))
         return next((spool_id for spool_id in picks if spool_id is not None), None)
 
     def _park_detector_state(self) -> dict | None:

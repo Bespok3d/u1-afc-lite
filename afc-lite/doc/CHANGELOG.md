@@ -8,6 +8,9 @@
   another lane.
 - A lane the print does not use shows no tool, and between prints no lane shows a tool. Before, an
   idle printer showed T0 to T3 on the four lanes, a map no print had asked for.
+- After a print fails, the lanes no longer keep showing that print's tools.
+- During a print, a lane the print does not use no longer shows the spool picked for a tool
+  another lane feeds.
 - A lane with a multi-colour reel now reports all its colours, not only the first one.
 
 ## 0.1.13
