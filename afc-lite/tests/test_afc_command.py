@@ -244,6 +244,7 @@ def test_a_material_on_a_lane_with_an_empty_brand_goes_as_generic():
     ({"LANE": "E1"}, "LANE=E1"),
     ({"LANE": "E1", "VENDOR": ""}, "LANE=E1 VENDOR="),
     ({"LANE": "E1", "VENDOR": ""}, 'LANE=E1 VENDOR=""'),
+    ({"LANE": "E1", "VENDOR": "NONE"}, "LANE=E1 VENDOR=NONE"),
 ])
 def test_setting_no_brand_is_refused_and_nothing_written(vendor_params, raw_line):
     """A missing brand used to be written as NONE, wiping the lane's brand without a word."""
@@ -399,7 +400,7 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
     ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker", "Set a new brand with SET_VENDOR"),
     ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF", "Set a new material with SET_MATERIAL"),
     ("cmd_AFC_SET_LANE_VENDOR", "subtype", "Matte;Silk",
-     "Set a new sub-type with SET_MATERIAL SUBTYPE="),
+     "Set a new sub-type with SET_MATERIAL MATERIAL=<material> SUBTYPE="),
 ])
 def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, stored_value, fix):
     afc = afc_with_tagged_lane(1)

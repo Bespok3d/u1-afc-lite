@@ -35,8 +35,8 @@
   typed with a quote mark Klipper drops, like Jayo's without quotes around it.
 - When a lane already holds such a value, from its tag or the screen, the message now says
   how to fix it: set it anew, or change it on the printer screen, or read the reel's tag
-  again. A lane holding a bad brand and also a bad material or sub-type can only be fixed
-  those last two ways.
+  again. A lane holding a bad brand and no material, or also a bad material or sub-type, can
+  only be fixed those last two ways.
 
 ## 0.1.13
 

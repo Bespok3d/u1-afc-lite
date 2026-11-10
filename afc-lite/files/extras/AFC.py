@@ -33,10 +33,10 @@ CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_
 # quote left open running to the end of the line.
 TYPED_PARAMETER = re.compile(r"""(?:[^ \t"']|"[^"]*(?:"|$)|'[^']*(?:'|$))+""")
 QUOTED_PART = re.compile(r""""([^"]*)"?|'([^']*)'?""")
-# The command that sets each stored field anew. A bad brand with a bad material or sub-type
-# refuses both commands, which leaves the printer screen or a tag read.
+# The command that sets each stored field anew. A bad brand with no material, or with a bad
+# material or sub-type, refuses both commands, which leaves the printer screen or a tag read.
 COMMAND_THAT_SETS = {"brand": "SET_VENDOR", "material": "SET_MATERIAL",
-                     "sub-type": "SET_MATERIAL SUBTYPE="}
+                     "sub-type": "SET_MATERIAL MATERIAL=<material> SUBTYPE="}
 
 
 def _decode_name(raw: str) -> str:
@@ -289,7 +289,7 @@ class AFC:
         self._refuse_values_klipper_changed(gcmd, "SET_VENDOR")
         lane = self._lane_named(gcmd)
         vendor = gcmd.get('VENDOR', '')
-        if not vendor:
+        if vendor in NO_VENDOR:
             raise gcmd.error(f"SET_VENDOR: no brand given for lane {lane.name}; give one with"
                              " VENDOR=. Nothing was changed.")
         filament = lane.filament()
