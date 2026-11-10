@@ -254,11 +254,14 @@ class AFC:
 
     def cmd_SET_SPOOL_ID(self, gcmd):
         lane_name = gcmd.get('LANE')
-        spool_id = gcmd.get_int('SPOOL_ID', None)
         lane = self.lanes.get(lane_name)
         if lane is None:
             raise gcmd.error(f"unknown AFC lane: {lane_name}")
-        lane.spool_id = spool_id
+        # Fluidd and Mainsail clear a spool with an empty SPOOL_ID=, which get_int refuses.
+        if not gcmd.get('SPOOL_ID', ''):
+            lane.spool_id = None
+            return
+        lane.spool_id = gcmd.get_int('SPOOL_ID')
 
     def _lane_named(self, gcmd):
         lane_name = gcmd.get('LANE', 'E0')

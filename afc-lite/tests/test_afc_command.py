@@ -101,6 +101,24 @@ def test_set_spool_id_assigns_to_named_lane():
     assert lane.spool_id == 42
 
 
+@pytest.mark.parametrize("params", [{"LANE": "E0"}, {"LANE": "E0", "SPOOL_ID": ""}])
+def test_set_spool_id_empty_or_missing_takes_spool_off_lane(params):
+    afc = afc_with_lane(0)
+    lane = afc.lanes["E0"]
+    lane.spool_id = 42
+    afc.cmd_SET_SPOOL_ID(FakeGcmd(params))
+    assert lane.spool_id is None
+
+
+def test_set_spool_id_not_a_number_raises():
+    afc = afc_with_lane(0)
+    lane = afc.lanes["E0"]
+    lane.spool_id = 42
+    with pytest.raises(ValueError, match="abc"):
+        afc.cmd_SET_SPOOL_ID(FakeGcmd({"LANE": "E0", "SPOOL_ID": "abc"}))
+    assert lane.spool_id == 42
+
+
 def test_set_spool_id_unknown_lane_raises():
     afc = make_afc()
     afc.lanes = {}
