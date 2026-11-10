@@ -25,6 +25,8 @@
 - Clearing a lane's spool in Fluidd no longer ends with the error "SET_WEIGHT is not supported".
   `SET_WEIGHT` is now accepted and does nothing: the U1 weighs no lane, and Spoolman holds a
   spool's weight.
+- Setting a brand on a lane with no material now says so and changes nothing; set the
+  material first.
 
 ## 0.1.13
 

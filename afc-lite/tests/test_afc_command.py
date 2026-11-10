@@ -65,6 +65,7 @@ class FakeGcmd:
 class FakeLane:
     def __init__(self, lane_index=0):
         self.spool_id = None
+        self.name = f"E{lane_index}"
         self.lane_index = lane_index
         self.filament_name = ""
         self.color = "#FFFFFF"
@@ -261,6 +262,14 @@ def test_a_new_brand_reaches_a_tagged_lane_and_keeps_its_material():
 def test_the_lanes_own_brand_leaves_the_tag_read_alone():
     afc = afc_with_tagged_lane(3)
     afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E3", "VENDOR": "Snapmaker"}))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_brand_for_a_lane_with_no_material_is_refused_and_nothing_written():
+    """The brand went out with the material 'NONE', which the printer then stored as real."""
+    afc = afc_with_lane(2)
+    with pytest.raises(ValueError, match="no material"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E2", "VENDOR": "Elegoo"}))
     assert afc.gcode.scripts_run == []
 
 

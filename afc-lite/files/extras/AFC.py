@@ -177,6 +177,9 @@ class AFC:
         filament = lane.filament()
         if vendor == filament['vendor']:
             return
+        if filament['type'] == NOTHING_SET:
+            raise gcmd.error(f"SET_VENDOR: lane {lane.name} has no material yet; set it with"
+                             " SET_MATERIAL first. Nothing was changed.")
         self._force_filament_config(
             lane, filament_settings(vendor, filament['type'], filament['subtype']))
 
