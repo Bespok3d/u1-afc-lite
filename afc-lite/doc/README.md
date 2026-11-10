@@ -83,7 +83,8 @@ covers it under "Limits worth knowing about".
   tag, like a colour. These are refused and nothing changes: a missing or empty material or brand, or
   `NONE`; a value that holds ' # * ; \ or a line break; a value typed with a quote mark Klipper
   drops, like Jayo's without quotes around it. A lane already holding such a value, from its tag
-  or the screen, refuses both too, and the message says how to fix it.
+  or the screen, refuses the command that would send it back, and the message says how to fix
+  it.
 - `SET_WEIGHT` is accepted and does nothing: the U1 weighs no lane, and Spoolman holds a spool's
   weight. Fluidd sends it every time a lane's spool is cleared.
 - `CHANGE_TOOL` (Load button) loads filament.

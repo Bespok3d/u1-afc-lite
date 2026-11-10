@@ -399,11 +399,11 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
 
 @pytest.mark.parametrize("set_filament, stored_field, stored_value, fix", [
     ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker",
-     "Set a new brand by sending SET_VENDOR LANE=E1 with VENDOR= set to it"),
+     "Set a new brand by sending SET_VENDOR LANE=E1 VENDOR= followed by it"),
     ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF",
-     "Set a new material by sending SET_MATERIAL LANE=E1 with MATERIAL= set to it"),
+     "Set a new material by sending SET_MATERIAL LANE=E1 MATERIAL= followed by it"),
     ("cmd_AFC_SET_LANE_VENDOR", "subtype", "Matte;Silk",
-     "Set a new sub-type by sending SET_MATERIAL LANE=E1 MATERIAL=PLA with SUBTYPE= set to it"),
+     "Set a new sub-type by sending SET_MATERIAL LANE=E1 MATERIAL='PLA' SUBTYPE= followed by it"),
 ])
 def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, stored_value, fix):
     afc = afc_with_tagged_lane(1)
@@ -414,10 +414,35 @@ def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, s
     assert afc.gcode.scripts_run == []
 
 
+@pytest.mark.parametrize("refused_command, stored_filament, fixing_command, fixing_params", [
+    ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "PLA", "subtype": "Matte"},
+     "cmd_AFC_SET_LANE_VENDOR", {"LANE": "E1", "VENDOR": "Snapmaker"}),
+    ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snapmaker", "type": "PLA#CF", "subtype": "Matte"},
+     "cmd_AFC_SET_LANE_MATERIAL", {"LANE": "E1", "MATERIAL": "PLA"}),
+    ("cmd_AFC_SET_LANE_VENDOR",
+     {"vendor": "Snapmaker", "type": "PLA Plus", "subtype": "Matte;Silk"},
+     "cmd_AFC_SET_LANE_MATERIAL", {"LANE": "E1", "MATERIAL": "PLA Plus", "SUBTYPE": "Silk"}),
+])
+def test_the_command_a_refusal_names_goes_through(refused_command, stored_filament,
+                                                  fixing_command, fixing_params):
+    """The hint must name only a command whose own checks pass on that lane, typed as shown."""
+    afc = afc_with_lane(1)
+    afc.lanes["E1"].filament_held = stored_filament
+    with pytest.raises(ValueError) as refusal:
+        getattr(afc, refused_command)(
+            FakeGcmd({"LANE": "E1", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
+    hinted_command = str(refusal.value).split("by sending ")[1].split(" followed by it")[0]
+    new_value = list(fixing_params.values())[-1]
+    typed_parameters = hinted_command.split(" ", 1)[1] + new_value
+    getattr(afc, fixing_command)(FakeGcmd(fixing_params, typed_parameters))
+    assert len(afc.gcode.scripts_run) == 1
+
+
 @pytest.mark.parametrize("set_filament, stored_filament", [
     ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "NONE", "subtype": "NONE"}),
     ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "PLA", "subtype": "Matte;Silk"}),
     ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snap;maker", "type": "PLA#CF", "subtype": "Matte"}),
+    ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snap;maker", "type": "PLA", "subtype": "Matte;Silk"}),
 ])
 def test_a_stored_value_no_command_can_fix_names_only_the_screen_and_the_tag(
         set_filament, stored_filament):
