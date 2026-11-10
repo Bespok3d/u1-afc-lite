@@ -32,6 +32,10 @@
 - A material, sub-type or brand that the printer would get cut short or changed is now refused
   with a message, and nothing changes. That is one holding ' # * ; \ or a line break, or one
   typed with a quote mark Klipper drops, like Jayo's without quotes around it.
+- When a lane already holds such a value, from its tag or the screen, the message now says
+  how to fix it: set it anew, or change it on the printer screen, or read the reel's tag
+  again. A lane holding a bad brand and also a bad material or sub-type can only be fixed
+  those last two ways.
 
 ## 0.1.13
 

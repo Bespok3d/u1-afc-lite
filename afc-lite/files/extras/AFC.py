@@ -31,6 +31,10 @@ CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_
 # quote left open running to the end of the line.
 TYPED_PARAMETER = re.compile(r"""(?:[^ \t"']|"[^"]*(?:"|$)|'[^']*(?:'|$))+""")
 QUOTED_PART = re.compile(r""""([^"]*)"?|'([^']*)'?""")
+# The command that sets each stored field anew. A bad brand with a bad material or sub-type
+# refuses both commands, which leaves the printer screen or a tag read.
+COMMAND_THAT_SETS = {"brand": "SET_VENDOR", "material": "SET_MATERIAL",
+                     "sub-type": "SET_MATERIAL SUBTYPE="}
 
 
 def _decode_name(raw: str) -> str:
@@ -114,9 +118,13 @@ def breaking_character(value: str) -> str | None:
                  if character in CHARACTERS_THAT_BREAK_A_COMMAND), None)
 
 
+def first_breaking_value(named_values: dict[str, str]) -> tuple[str, str, str] | None:
+    return next(((name, value, character) for name, value in named_values.items()
+                 if (character := breaking_character(value))), None)
+
+
 def refuse_breaking_characters(named_values: dict[str, str]) -> None:
-    broken = next(((name, value, character) for name, value in named_values.items()
-                   if (character := breaking_character(value))), None)
+    broken = first_breaking_value(named_values)
     if broken is None:
         return
     name, value, character = broken
@@ -239,6 +247,17 @@ class AFC:
         raise gcmd.error(f"{command_name}: Klipper read {key} as {value!r}, not as typed: it ends a"
                          " command at # * or ; and drops quote marks. Nothing was changed.")
 
+    def _refuse_stored_values_the_printer_cannot_take(self, gcmd, command_name: str, lane,
+                                                      stored_values: dict[str, str]) -> None:
+        broken = first_breaking_value(stored_values)
+        if broken is None:
+            return
+        name, value, character = broken
+        raise gcmd.error(
+            f"{command_name}: lane {lane.name} holds the {name} {value!r}, and its {character!r}"
+            f" cannot go back to the printer. Set a new {name} with {COMMAND_THAT_SETS[name]},"
+            " on the printer screen, or by reading the reel's tag again. Nothing was changed.")
+
     def cmd_AFC_SET_LANE_MATERIAL(self, gcmd):
         self._refuse_values_klipper_changed(gcmd, "SET_MATERIAL")
         lane = self._lane_named(gcmd)
@@ -250,6 +269,8 @@ class AFC:
         filament = lane.filament()
         if is_the_lanes_own_material(material, subtype, filament):
             return
+        self._refuse_stored_values_the_printer_cannot_take(
+            gcmd, "SET_MATERIAL", lane, {"brand": filament['vendor']})
         vendor = vendor_for_material(filament['vendor'])
         self._write_filament(gcmd, "SET_MATERIAL", lane, (vendor, material, subtype or ''))
 
@@ -263,6 +284,9 @@ class AFC:
         if filament['type'] in NO_MATERIAL:
             raise gcmd.error(f"SET_VENDOR: lane {lane.name} has no material yet; set it with"
                              " SET_MATERIAL first. Nothing was changed.")
+        self._refuse_stored_values_the_printer_cannot_take(
+            gcmd, "SET_VENDOR", lane,
+            {"material": filament['type'], "sub-type": filament['subtype']})
         self._write_filament(
             gcmd, "SET_VENDOR", lane, (vendor, filament['type'], filament['subtype']))
 

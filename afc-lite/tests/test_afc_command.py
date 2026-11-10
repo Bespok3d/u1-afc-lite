@@ -290,7 +290,7 @@ def test_a_brand_the_printer_holds_that_it_cannot_take_back_is_refused(breaking_
     """A ' closed the quotes and dropped FORCE; # * ; and a line break cut the command short."""
     afc = afc_with_tagged_lane(1)
     afc.lanes["E1"].filament_held["vendor"] = f"Snap{breaking_character}maker"
-    with pytest.raises(ValueError, match="SET_MATERIAL: the brand"):
+    with pytest.raises(ValueError, match="SET_MATERIAL: lane E1 holds the brand"):
         afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG"}))
     assert afc.gcode.scripts_run == []
 
@@ -366,8 +366,23 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
     """SET_VENDOR sends the lane's own sub-type, which a tag or the screen may have set."""
     afc = afc_with_tagged_lane(1)
     afc.lanes["E1"].filament_held["subtype"] = "Matte;Silk"
-    with pytest.raises(ValueError, match="SET_VENDOR: the sub-type"):
+    with pytest.raises(ValueError, match="SET_VENDOR: lane E1 holds the sub-type"):
         afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Elegoo"}))
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("set_filament, stored_field, stored_value, fix", [
+    ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker", "Set a new brand with SET_VENDOR"),
+    ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF", "Set a new material with SET_MATERIAL"),
+    ("cmd_AFC_SET_LANE_VENDOR", "subtype", "Matte;Silk",
+     "Set a new sub-type with SET_MATERIAL SUBTYPE="),
+])
+def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, stored_value, fix):
+    afc = afc_with_tagged_lane(1)
+    afc.lanes["E1"].filament_held[stored_field] = stored_value
+    with pytest.raises(ValueError) as refusal:
+        getattr(afc, set_filament)(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
+    assert f"{fix}, on the printer screen, or by reading the reel's tag again" in str(refusal.value)
     assert afc.gcode.scripts_run == []
 
 
