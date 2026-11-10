@@ -1,6 +1,7 @@
 # ruff: noqa: PLR2004  Tests assert against literal spool ids and colors.
 """Regression tests for the g-code commands AFC.py registers."""
 import base64
+import shlex
 
 import pytest
 from AFC import AFC
@@ -399,11 +400,13 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
 
 @pytest.mark.parametrize("set_filament, stored_field, stored_value, fix", [
     ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker",
-     "Set a new brand by sending SET_VENDOR LANE=E1 VENDOR= followed by it"),
+     'Set a new brand by sending SET_VENDOR LANE=E1 VENDOR="..." with the new brand in the quotes'),
     ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF",
-     "Set a new material by sending SET_MATERIAL LANE=E1 MATERIAL= followed by it"),
+     "Set a new material by sending SET_MATERIAL LANE=E1 SUBTYPE='Matte' MATERIAL=\"...\""
+     " with the new material in the quotes"),
     ("cmd_AFC_SET_LANE_VENDOR", "subtype", "Matte;Silk",
-     "Set a new sub-type by sending SET_MATERIAL LANE=E1 MATERIAL='PLA' SUBTYPE= followed by it"),
+     "Set a new sub-type by sending SET_MATERIAL LANE=E1 MATERIAL='PLA' SUBTYPE=\"...\""
+     " with the new sub-type in the quotes"),
 ])
 def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, stored_value, fix):
     afc = afc_with_tagged_lane(1)
@@ -414,28 +417,37 @@ def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, s
     assert afc.gcode.scripts_run == []
 
 
-@pytest.mark.parametrize("refused_command, stored_filament, fixing_command, fixing_params", [
+COMMAND_METHODS = {"SET_VENDOR": "cmd_AFC_SET_LANE_VENDOR",
+                   "SET_MATERIAL": "cmd_AFC_SET_LANE_MATERIAL"}
+
+
+@pytest.mark.parametrize("refused_command, stored_filament, new_value, written_filament", [
     ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "PLA", "subtype": "Matte"},
-     "cmd_AFC_SET_LANE_VENDOR", {"LANE": "E1", "VENDOR": "Snapmaker"}),
+     "Bambu Lab", ("PLA", "Matte", "Bambu Lab")),
     ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snapmaker", "type": "PLA#CF", "subtype": "Matte"},
-     "cmd_AFC_SET_LANE_MATERIAL", {"LANE": "E1", "MATERIAL": "PLA"}),
+     "PLA Plus", ("PLA Plus", "Matte", "Snapmaker")),
+    ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snapmaker", "type": "PLA#CF", "subtype": "Matte;Silk"},
+     "PETG", ("PETG", "", "Snapmaker")),
     ("cmd_AFC_SET_LANE_VENDOR",
      {"vendor": "Snapmaker", "type": "PLA Plus", "subtype": "Matte;Silk"},
-     "cmd_AFC_SET_LANE_MATERIAL", {"LANE": "E1", "MATERIAL": "PLA Plus", "SUBTYPE": "Silk"}),
+     "Silk Matte", ("PLA Plus", "Silk Matte", "Snapmaker")),
 ])
-def test_the_command_a_refusal_names_goes_through(refused_command, stored_filament,
-                                                  fixing_command, fixing_params):
-    """The hint must name only a command whose own checks pass on that lane, typed as shown."""
+def test_the_command_a_refusal_names_sets_only_that_field(refused_command, stored_filament,
+                                                          new_value, written_filament):
+    """The hint once named a command that refused in turn, or cleared a sub-type it kept."""
     afc = afc_with_lane(1)
     afc.lanes["E1"].filament_held = stored_filament
     with pytest.raises(ValueError) as refusal:
         getattr(afc, refused_command)(
             FakeGcmd({"LANE": "E1", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
-    hinted_command = str(refusal.value).split("by sending ")[1].split(" followed by it")[0]
-    new_value = list(fixing_params.values())[-1]
-    typed_parameters = hinted_command.split(" ", 1)[1] + new_value
-    getattr(afc, fixing_command)(FakeGcmd(fixing_params, typed_parameters))
-    assert len(afc.gcode.scripts_run) == 1
+    hinted_command = str(refusal.value).split("by sending ")[1].split(" with the new")[0]
+    command_name, typed_parameters = hinted_command.replace("...", new_value).split(" ", 1)
+    parsed = dict(word.split("=", 1) for word in shlex.split(typed_parameters))
+    getattr(afc, COMMAND_METHODS[command_name])(FakeGcmd(parsed, typed_parameters))
+    material, subtype, vendor = written_filament
+    assert afc.gcode.scripts_run == [
+        f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 FILAMENT_TYPE='{material}'"
+        f" FILAMENT_SUBTYPE='{subtype}' VENDOR='{vendor}' FORCE=1"]
 
 
 @pytest.mark.parametrize("set_filament, stored_filament", [

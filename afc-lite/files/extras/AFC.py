@@ -33,11 +33,13 @@ CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_
 # quote left open running to the end of the line.
 TYPED_PARAMETER = re.compile(r"""(?:[^ \t"']|"[^"]*(?:"|$)|'[^']*(?:'|$))+""")
 QUOTED_PART = re.compile(r""""([^"]*)"?|'([^']*)'?""")
-# The command that sets each stored field anew, named in full because LANE defaults to E0. The
-# material is quoted because it may hold a space, and it can hold no ' since that is refused.
+# The command that sets each stored field anew, named in full because LANE defaults to E0, and
+# keeping the lane's other fields since SET_MATERIAL clears a sub-type left out. Values go in
+# quotes because they may hold a space; a stored one holds no ' since a ' is refused.
 COMMAND_THAT_SETS = {"brand": "SET_VENDOR LANE={lane} VENDOR=",
-                     "material": "SET_MATERIAL LANE={lane} MATERIAL=",
+                     "material": "SET_MATERIAL LANE={lane}{kept_subtype} MATERIAL=",
                      "sub-type": "SET_MATERIAL LANE={lane} MATERIAL='{material}' SUBTYPE="}
+NEW_VALUE_PLACE = '"..."'
 
 
 def _decode_name(raw: str) -> str:
@@ -147,13 +149,22 @@ COMMAND_CAN_SET = {"brand": brand_can_be_set, "material": material_can_be_set,
                    "sub-type": material_can_be_set}
 
 
+def kept_subtype_parameter(subtype: str) -> str:
+    if subtype in NO_MATERIAL or breaking_character(subtype):
+        return ""
+    return f" SUBTYPE='{subtype}'"
+
+
 def how_to_set_anew(field_name: str, lane_name: str, filament: dict[str, str]) -> str:
     # A command that would refuse in turn is left out, so the user is never sent back and forth.
     if not COMMAND_CAN_SET[field_name](filament):
         return f"Set a new {field_name} on the printer screen or by reading the reel's tag again."
-    command = COMMAND_THAT_SETS[field_name].format(lane=lane_name, material=filament['type'])
-    return (f"Set a new {field_name} by sending {command} followed by it, on the printer screen,"
-            " or by reading the reel's tag again.")
+    command = COMMAND_THAT_SETS[field_name].format(
+        lane=lane_name, material=filament['type'],
+        kept_subtype=kept_subtype_parameter(filament['subtype']))
+    return (f"Set a new {field_name} by sending {command}{NEW_VALUE_PLACE} with the new"
+            f" {field_name} in the quotes, on the printer screen, or by reading the reel's tag"
+            " again.")
 
 
 def refuse_breaking_characters(named_values: dict[str, str]) -> None:
