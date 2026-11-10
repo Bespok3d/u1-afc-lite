@@ -44,8 +44,18 @@ REQUIRED = object()
 
 
 class FakeGcmd:
-    def __init__(self, params):
+    def __init__(self, params, raw_params=None):
+        """raw_params is the line as typed, for when Klipper cut it before reading the params."""
         self._params = params
+        self._raw_params = raw_params
+        if raw_params is None:
+            self._raw_params = " ".join(f"{key}={value}" for key, value in params.items())
+
+    def get_command_parameters(self):
+        return self._params
+
+    def get_raw_command_parameters(self):
+        return self._raw_params
 
     def get(self, key, default=REQUIRED):
         if key in self._params:
@@ -265,11 +275,90 @@ def test_the_lanes_own_brand_leaves_the_tag_read_alone():
     assert afc.gcode.scripts_run == []
 
 
-def test_a_brand_for_a_lane_with_no_material_is_refused_and_nothing_written():
+@pytest.mark.parametrize("no_material", ["NONE", ""])
+def test_a_brand_for_a_lane_with_no_material_is_refused_and_nothing_written(no_material):
     """The brand went out with the material 'NONE', which the printer then stored as real."""
     afc = afc_with_lane(2)
+    afc.lanes["E2"].filament_held = {"vendor": "NONE", "type": no_material, "subtype": "NONE"}
     with pytest.raises(ValueError, match="no material"):
         afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E2", "VENDOR": "Elegoo"}))
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("breaking_character", ["'", "#", "*", ";", "\n"])
+def test_a_brand_the_printer_holds_that_it_cannot_take_back_is_refused(breaking_character):
+    """A ' closed the quotes and dropped FORCE; # * ; and a line break cut the command short."""
+    afc = afc_with_tagged_lane(1)
+    afc.lanes["E1"].filament_held["vendor"] = f"Snap{breaking_character}maker"
+    with pytest.raises(ValueError, match="SET_MATERIAL: the brand"):
+        afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG"}))
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("typed", ['LANE=E1 MATERIAL="PLA#CF"', "LANE=E1 MATERIAL=PLA;CF",
+                                   "LANE=E1 MATERIAL=PLA*CF", 'LANE=E1 MATERIAL="PLA ;CF"',
+                                   'LANE=E1 MATERIAL="PLA;CF" ; MATERIAL=PLA',
+                                   "LANE=E1 MATERIAL='PLA#CF'",
+                                   "LANE=E1 MATERIAL=PLA MATERIAL=PLA#CF"])
+def test_a_material_klipper_cut_short_is_refused_and_nothing_written(typed):
+    """Klipper hands the command only "PLA", which was written as the whole material."""
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_MATERIAL: Klipper read MATERIAL as 'PLA'"):
+        afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PLA"}, typed))
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("typed", ["LANE=E1 MATERIAL=PETG ; spare reel",
+                                   'LANE=E1 MATERIAL="PETG";spare reel', "lane=E1 material=PETG",
+                                   "LANE=E1\tMATERIAL='PETG'"])
+def test_a_material_klipper_read_whole_is_written(typed):
+    afc = afc_with_tagged_lane(1)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG"}, typed))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 "
+        "FILAMENT_TYPE='PETG' FILAMENT_SUBTYPE='' VENDOR='Snapmaker' FORCE=1"]
+
+
+def test_a_sub_type_klipper_cut_short_is_refused_and_nothing_written():
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_MATERIAL: Klipper read SUBTYPE as 'Matte'"):
+        afc.cmd_AFC_SET_LANE_MATERIAL(
+            FakeGcmd({"LANE": "E1", "MATERIAL": "PLA", "SUBTYPE": "Matte"},
+                     "LANE=E1 MATERIAL=PLA SUBTYPE=Matte#2"))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_brand_whose_unquoted_apostrophe_klipper_dropped_is_refused():
+    """Klipper reads a bare ' as an opening quote and drops it, so "Jayos" was written."""
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_VENDOR: Klipper read VENDOR as 'Jayos'"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Jayos"},
+                                             "LANE=E1 VENDOR=Jayo's"))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_brand_klipper_cut_short_is_refused_and_nothing_written():
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_VENDOR: Klipper read VENDOR as 'Elegoo'"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Elegoo"},
+                                             "LANE=E1 VENDOR=Elegoo#2"))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_brand_the_printer_cannot_take_is_refused_and_nothing_written():
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_VENDOR: the brand \"Jayo's\" holds \"'\""):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Jayo's"},
+                                             "LANE=E1 VENDOR=\"Jayo's\""))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
+    """SET_VENDOR sends the lane's own sub-type, which a tag or the screen may have set."""
+    afc = afc_with_tagged_lane(1)
+    afc.lanes["E1"].filament_held["subtype"] = "Matte;Silk"
+    with pytest.raises(ValueError, match="SET_VENDOR: the sub-type"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Elegoo"}))
     assert afc.gcode.scripts_run == []
 
 

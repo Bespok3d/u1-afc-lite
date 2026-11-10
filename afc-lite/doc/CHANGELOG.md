@@ -27,6 +27,9 @@
   spool's weight.
 - Setting a brand on a lane with no material now says so and changes nothing; set the
   material first.
+- A material, sub-type or brand that the printer would get cut short or changed is now refused
+  with a message, and nothing changes. That is one holding ' # * ; or a line break, or one
+  typed with a quote mark Klipper drops, like Jayo's without quotes around it.
 
 ## 0.1.13
 

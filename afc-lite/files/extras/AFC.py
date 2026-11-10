@@ -4,6 +4,7 @@
 
 # ruff: noqa: N802  Klipper registers g-code handlers by method name; they must be cmd_UPPERCASE.
 import base64
+import re
 import string
 
 # The printer holds up to five colours per reel (FILAMENT_COLOR_NUMS_MAX in its print_task_config).
@@ -16,8 +17,20 @@ MULTI_COLOR_MODE = 0
 DEFAULT_MATERIAL = "PLA"
 # What the printer holds for a field no tag and no user has set.
 NOTHING_SET = "NONE"
+# The printer's print_task_config counts an empty material as no material too.
+NO_MATERIAL = (NOTHING_SET, "")
 # The slicer's name for a reel of no known brand.
 GENERIC_VENDOR = "Generic"
+# A ' closes the quotes around a value sent to the printer, Klipper cuts a command line at # * or ;
+# whether quoted or not, and a line break starts another command.
+CHARACTERS_THAT_CUT_A_COMMAND = frozenset("#*;")
+CHARACTERS_THAT_BREAK_A_COMMAND = CHARACTERS_THAT_CUT_A_COMMAND | {"'", "\n"}
+QUOTES = ('"', "'")
+CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_COMMAND))) + "]")
+# One parameter as Klipper's splitter reads it: split on space and tab only, outside quotes, with a
+# quote left open running to the end of the line.
+TYPED_PARAMETER = re.compile(r"""(?:[^ \t"']|"[^"]*(?:"|$)|'[^']*(?:'|$))+""")
+QUOTED_PART = re.compile(r""""([^"]*)"?|'([^']*)'?""")
 
 
 def _decode_name(raw: str) -> str:
@@ -96,8 +109,56 @@ def vendor_for_material(lane_vendor: str) -> str:
     return GENERIC_VENDOR if lane_vendor == NOTHING_SET else lane_vendor
 
 
+def breaking_character(value: str) -> str | None:
+    return next((character for character in value
+                 if character in CHARACTERS_THAT_BREAK_A_COMMAND), None)
+
+
+def refuse_breaking_characters(named_values: dict[str, str]) -> None:
+    broken = next(((name, value, character) for name, value in named_values.items()
+                   if (character := breaking_character(value))), None)
+    if broken is None:
+        return
+    name, value, character = broken
+    raise ValueError(f"the {name} {value!r} holds {character!r}, which the printer cannot take."
+                     " Nothing was changed.")
+
+
+def key_klipper_reads(typed_parameter: str) -> str:
+    return QUOTED_PART.sub(r"\1\2", typed_parameter).split("=", 1)[0].upper()
+
+
+def typed_whole(typed_parameter: tuple[str, bool] | None, value: str) -> bool:
+    """True when the value Klipper read is all the user typed: bare and ended by a space or the
+    line's end, or wrapped whole in one pair of quotes."""
+    if typed_parameter is None:
+        return False
+    typed_text, ends_at_the_cut = typed_parameter
+    typed_value = typed_text.split("=", 1)[-1]
+    quoted_forms = {f"{quote}{value}{quote}" for quote in QUOTES}
+    return typed_value in quoted_forms or (typed_value == value and not ends_at_the_cut)
+
+
+def last_typed_parameters(read_text: str, is_cut: bool) -> dict[str, tuple[str, bool]]:
+    """Each key's last parameter as typed, the one Klipper keeps, and whether the cut ends it."""
+    return {key_klipper_reads(typed.group()):
+            (typed.group(), is_cut and typed.end() == len(read_text))
+            for typed in TYPED_PARAMETER.finditer(read_text)}
+
+
+def value_klipper_changed(raw_params: str, params: dict[str, str]) -> tuple[str, str] | None:
+    """Klipper reads a command only up to its first # * or ; and drops every quote mark, so a
+    value it changed no longer shows whole in the line as typed."""
+    cut = CUT_CHARACTER.search(raw_params)
+    read_text = raw_params if cut is None else raw_params[:cut.start()]
+    last_typed = last_typed_parameters(read_text, cut is not None)
+    return next(((key, value) for key, value in params.items()
+                 if not typed_whole(last_typed.get(key), value)), None)
+
+
 def filament_settings(vendor: str, material: str, subtype: str) -> str:
     """The printer takes a brand only together with a material and a sub-type."""
+    refuse_breaking_characters({"brand": vendor, "material": material, "sub-type": subtype})
     return f"FILAMENT_TYPE='{material}' FILAMENT_SUBTYPE='{subtype}' VENDOR='{vendor}'"
 
 
@@ -150,6 +211,14 @@ class AFC:
         self.gcode.run_script_from_command(
             f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={lane.lane_index} {settings} FORCE=1")
 
+    def _write_filament(self, gcmd, command_name: str, lane,
+                        brand_material_subtype: tuple[str, str, str]) -> None:
+        try:
+            settings = filament_settings(*brand_material_subtype)
+        except ValueError as reason:
+            raise gcmd.error(f"{command_name}: {reason}") from reason
+        self._force_filament_config(lane, settings)
+
     def cmd_AFC_SET_LANE_COLOR(self, gcmd):
         lane = self._lane_named(gcmd)
         color = gcmd.get('COLOR', '')
@@ -161,7 +230,17 @@ class AFC:
             return
         self._force_filament_config(lane, settings)
 
+    def _refuse_values_klipper_changed(self, gcmd, command_name: str) -> None:
+        changed = value_klipper_changed(gcmd.get_raw_command_parameters(),
+                                        gcmd.get_command_parameters())
+        if changed is None:
+            return
+        key, value = changed
+        raise gcmd.error(f"{command_name}: Klipper read {key} as {value!r}, not as typed: it ends a"
+                         " command at # * or ; and drops quote marks. Nothing was changed.")
+
     def cmd_AFC_SET_LANE_MATERIAL(self, gcmd):
+        self._refuse_values_klipper_changed(gcmd, "SET_MATERIAL")
         lane = self._lane_named(gcmd)
         material = gcmd.get('MATERIAL', DEFAULT_MATERIAL)
         subtype = gcmd.get('SUBTYPE', None)
@@ -169,19 +248,20 @@ class AFC:
         if is_the_lanes_own_material(material, subtype, filament):
             return
         vendor = vendor_for_material(filament['vendor'])
-        self._force_filament_config(lane, filament_settings(vendor, material, subtype or ''))
+        self._write_filament(gcmd, "SET_MATERIAL", lane, (vendor, material, subtype or ''))
 
     def cmd_AFC_SET_LANE_VENDOR(self, gcmd):
+        self._refuse_values_klipper_changed(gcmd, "SET_VENDOR")
         lane = self._lane_named(gcmd)
         vendor = gcmd.get('VENDOR', NOTHING_SET)
         filament = lane.filament()
         if vendor == filament['vendor']:
             return
-        if filament['type'] == NOTHING_SET:
+        if filament['type'] in NO_MATERIAL:
             raise gcmd.error(f"SET_VENDOR: lane {lane.name} has no material yet; set it with"
                              " SET_MATERIAL first. Nothing was changed.")
-        self._force_filament_config(
-            lane, filament_settings(vendor, filament['type'], filament['subtype']))
+        self._write_filament(
+            gcmd, "SET_VENDOR", lane, (vendor, filament['type'], filament['subtype']))
 
     def cmd_SET_LANE_FILAMENT_NAME(self, gcmd):
         extruder = gcmd.get_int('EXTRUDER')
