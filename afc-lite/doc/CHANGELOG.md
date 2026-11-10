@@ -22,6 +22,9 @@
   read off a Snapmaker tag; before, the printer refused it. Setting a brand now really
   changes it; before, the printer ignored it.
 - Clearing a lane's spool in Fluidd no longer wipes the reel's sub-type, such as Matte or Silk.
+- Clearing a lane's spool in Fluidd no longer ends with the error "SET_WEIGHT is not supported".
+  `SET_WEIGHT` is now accepted and does nothing: the U1 weighs no lane, and Spoolman holds a
+  spool's weight.
 
 ## 0.1.13
 

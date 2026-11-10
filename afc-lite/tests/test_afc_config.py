@@ -106,6 +106,11 @@ def test_set_material_and_vendor_hand_every_argument_to_the_plugin(macro_name, p
     assert "SET_PRINT_FILAMENT_CONFIG" not in body
 
 
+def test_set_weight_from_a_spool_clear_raises_no_error():
+    """Fluidd sends SET_WEIGHT on every spool clear, and the macro answered it with an error."""
+    assert macro_body("SET_WEIGHT").split("gcode:", 1)[1].strip() == ""
+
+
 def test_set_color_hands_every_argument_to_the_plugins_command():
     """The macro sent one colour straight to the printer, which flattened a multi-colour reel.
     AFC.py checks the colours and sends all of them."""

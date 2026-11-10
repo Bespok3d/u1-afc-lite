@@ -76,6 +76,8 @@ covers it under "Limits worth knowing about".
   `COLORS=<hex>`.
   A colour you set wins over the one the reel's tag gave the lane, and the printer then no
   longer counts that reel as a Snapmaker one until it reads the tag again.
+- `SET_WEIGHT` is accepted and does nothing: the U1 weighs no lane, and Spoolman holds a spool's
+  weight. Fluidd sends it every time a lane's spool is cleared.
 - `CHANGE_TOOL` (Load button) loads filament.
 - `TOOL_UNLOAD` (Unload button) unloads filament.
 - `LANE_UNLOAD` (Eject button) docks (parks) the tool via `PARK_EXTRUDER`. It moves no filament.
