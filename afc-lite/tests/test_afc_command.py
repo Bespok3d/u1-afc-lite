@@ -371,6 +371,19 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
     assert afc.gcode.scripts_run == []
 
 
+@pytest.mark.parametrize("material_params, raw_line", [
+    ({"LANE": "E1"}, "LANE=E1"),
+    ({"LANE": "E1", "MATERIAL": ""}, "LANE=E1 MATERIAL="),
+    ({"LANE": "E1", "MATERIAL": ""}, 'LANE=E1 MATERIAL=""'),
+    ({"LANE": "E1", "MATERIAL": "NONE"}, "LANE=E1 MATERIAL=NONE"),
+])
+def test_setting_no_material_is_refused_and_nothing_written(material_params, raw_line):
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_MATERIAL: no material given for lane E1"):
+        afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd(material_params, raw_line))
+    assert afc.gcode.scripts_run == []
+
+
 @pytest.mark.parametrize("set_filament", ["cmd_AFC_SET_LANE_MATERIAL", "cmd_AFC_SET_LANE_VENDOR"])
 def test_setting_the_filament_of_an_unknown_lane_raises(set_filament):
     afc = afc_with_tagged_lane(0)

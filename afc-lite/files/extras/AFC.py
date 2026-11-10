@@ -14,7 +14,6 @@ RGB_HEX_LENGTH = 6
 RGBA_HEX_LENGTH = 8
 # Snapmaker documents no meaning for MULTI_MODE; every known sender of a multi-colour reel sends 0.
 MULTI_COLOR_MODE = 0
-DEFAULT_MATERIAL = "PLA"
 # What the printer holds for a field no tag and no user has set.
 NOTHING_SET = "NONE"
 # The printer's print_task_config counts an empty material as no material too.
@@ -243,7 +242,10 @@ class AFC:
     def cmd_AFC_SET_LANE_MATERIAL(self, gcmd):
         self._refuse_values_klipper_changed(gcmd, "SET_MATERIAL")
         lane = self._lane_named(gcmd)
-        material = gcmd.get('MATERIAL', DEFAULT_MATERIAL)
+        material = gcmd.get('MATERIAL', '')
+        if material in NO_MATERIAL:
+            raise gcmd.error(f"SET_MATERIAL: no material given for lane {lane.name}; give one"
+                             " with MATERIAL=. Nothing was changed.")
         subtype = gcmd.get('SUBTYPE', None)
         filament = lane.filament()
         if is_the_lanes_own_material(material, subtype, filament):
