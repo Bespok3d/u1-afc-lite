@@ -285,7 +285,7 @@ def test_a_brand_for_a_lane_with_no_material_is_refused_and_nothing_written(no_m
     assert afc.gcode.scripts_run == []
 
 
-@pytest.mark.parametrize("breaking_character", ["'", "#", "*", ";", "\n"])
+@pytest.mark.parametrize("breaking_character", ["'", "#", "*", ";", "\n", "\\"])
 def test_a_brand_the_printer_holds_that_it_cannot_take_back_is_refused(breaking_character):
     """A ' closed the quotes and dropped FORCE; # * ; and a line break cut the command short."""
     afc = afc_with_tagged_lane(1)
@@ -350,6 +350,15 @@ def test_a_brand_the_printer_cannot_take_is_refused_and_nothing_written():
     with pytest.raises(ValueError, match="SET_VENDOR: the brand \"Jayo's\" holds \"'\""):
         afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Jayo's"},
                                              "LANE=E1 VENDOR=\"Jayo's\""))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_brand_with_a_backslash_fluidd_doubled_is_refused_and_nothing_written():
+    """Fluidd sends a typed backslash doubled and Klipper keeps both, so the printer stores two."""
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_VENDOR: the brand"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E1", "VENDOR": "Snap\\\\maker"},
+                                             'LANE=E1 VENDOR="Snap\\\\maker"'))
     assert afc.gcode.scripts_run == []
 
 

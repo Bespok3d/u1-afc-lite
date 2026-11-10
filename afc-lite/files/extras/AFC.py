@@ -22,9 +22,10 @@ NO_MATERIAL = (NOTHING_SET, "")
 # The slicer's name for a reel of no known brand.
 GENERIC_VENDOR = "Generic"
 # A ' closes the quotes around a value sent to the printer, Klipper cuts a command line at # * or ;
-# whether quoted or not, and a line break starts another command.
+# whether quoted or not, and a line break starts another command. Fluidd sends a \ doubled and
+# Klipper never undoes that, so the printer would store it doubled.
 CHARACTERS_THAT_CUT_A_COMMAND = frozenset("#*;")
-CHARACTERS_THAT_BREAK_A_COMMAND = CHARACTERS_THAT_CUT_A_COMMAND | {"'", "\n"}
+CHARACTERS_THAT_BREAK_A_COMMAND = CHARACTERS_THAT_CUT_A_COMMAND | {"'", "\n", "\\"}
 QUOTES = ('"', "'")
 CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_COMMAND))) + "]")
 # One parameter as Klipper's splitter reads it: split on space and tab only, outside quotes, with a
