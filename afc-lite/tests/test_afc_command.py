@@ -249,7 +249,8 @@ def test_a_material_on_a_lane_with_an_empty_brand_goes_as_generic():
 def test_setting_no_brand_is_refused_and_nothing_written(vendor_params, raw_line):
     """A missing brand used to be written as NONE, wiping the lane's brand without a word."""
     afc = afc_with_tagged_lane(1)
-    with pytest.raises(ValueError, match="SET_VENDOR: no brand given for lane E1"):
+    with pytest.raises(ValueError, match=(
+            "SET_VENDOR: no brand given for lane E1; give one with VENDOR=; NONE names no brand")):
         afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd(vendor_params, raw_line))
     assert afc.gcode.scripts_run == []
 
@@ -397,10 +398,12 @@ def test_a_sub_type_the_printer_holds_that_it_cannot_take_back_is_refused():
 
 
 @pytest.mark.parametrize("set_filament, stored_field, stored_value, fix", [
-    ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker", "Set a new brand with SET_VENDOR"),
-    ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF", "Set a new material with SET_MATERIAL"),
+    ("cmd_AFC_SET_LANE_MATERIAL", "vendor", "Snap;maker",
+     "Set a new brand by sending SET_VENDOR LANE=E1 with VENDOR= set to it"),
+    ("cmd_AFC_SET_LANE_VENDOR", "type", "PLA#CF",
+     "Set a new material by sending SET_MATERIAL LANE=E1 with MATERIAL= set to it"),
     ("cmd_AFC_SET_LANE_VENDOR", "subtype", "Matte;Silk",
-     "Set a new sub-type with SET_MATERIAL MATERIAL=<material> SUBTYPE="),
+     "Set a new sub-type by sending SET_MATERIAL LANE=E1 MATERIAL=PLA with SUBTYPE= set to it"),
 ])
 def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, stored_value, fix):
     afc = afc_with_tagged_lane(1)
@@ -408,6 +411,23 @@ def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, s
     with pytest.raises(ValueError) as refusal:
         getattr(afc, set_filament)(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
     assert f"{fix}, on the printer screen, or by reading the reel's tag again" in str(refusal.value)
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("set_filament, stored_filament", [
+    ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "NONE", "subtype": "NONE"}),
+    ("cmd_AFC_SET_LANE_MATERIAL", {"vendor": "Snap;maker", "type": "PLA", "subtype": "Matte;Silk"}),
+    ("cmd_AFC_SET_LANE_VENDOR", {"vendor": "Snap;maker", "type": "PLA#CF", "subtype": "Matte"}),
+])
+def test_a_stored_value_no_command_can_fix_names_only_the_screen_and_the_tag(
+        set_filament, stored_filament):
+    """The command the message named refused in turn, sending the user back and forth."""
+    afc = afc_with_lane(1)
+    afc.lanes["E1"].filament_held = stored_filament
+    with pytest.raises(ValueError) as refusal:
+        getattr(afc, set_filament)(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
+    assert "on the printer screen or by reading the reel's tag again" in str(refusal.value)
+    assert "by sending" not in str(refusal.value)
     assert afc.gcode.scripts_run == []
 
 
@@ -419,7 +439,9 @@ def test_a_stored_value_refusal_says_how_to_fix_it(set_filament, stored_field, s
 ])
 def test_setting_no_material_is_refused_and_nothing_written(material_params, raw_line):
     afc = afc_with_tagged_lane(1)
-    with pytest.raises(ValueError, match="SET_MATERIAL: no material given for lane E1"):
+    with pytest.raises(ValueError, match=(
+            "SET_MATERIAL: no material given for lane E1; give one with MATERIAL=;"
+            " NONE names no material")):
         afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd(material_params, raw_line))
     assert afc.gcode.scripts_run == []
 

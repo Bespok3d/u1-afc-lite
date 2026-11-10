@@ -33,10 +33,11 @@ CUT_CHARACTER = re.compile("[" + re.escape("".join(sorted(CHARACTERS_THAT_CUT_A_
 # quote left open running to the end of the line.
 TYPED_PARAMETER = re.compile(r"""(?:[^ \t"']|"[^"]*(?:"|$)|'[^']*(?:'|$))+""")
 QUOTED_PART = re.compile(r""""([^"]*)"?|'([^']*)'?""")
-# The command that sets each stored field anew. A bad brand with no material, or with a bad
-# material or sub-type, refuses both commands, which leaves the printer screen or a tag read.
-COMMAND_THAT_SETS = {"brand": "SET_VENDOR", "material": "SET_MATERIAL",
-                     "sub-type": "SET_MATERIAL MATERIAL=<material> SUBTYPE="}
+# The command that sets each stored field anew, named in full because LANE defaults to E0.
+COMMAND_THAT_SETS = {"brand": "SET_VENDOR LANE={lane} with VENDOR= set to it",
+                     "material": "SET_MATERIAL LANE={lane} with MATERIAL= set to it",
+                     "sub-type": ("SET_MATERIAL LANE={lane} MATERIAL={material}"
+                                  " with SUBTYPE= set to it")}
 
 
 def _decode_name(raw: str) -> str:
@@ -123,6 +124,36 @@ def breaking_character(value: str) -> str | None:
 def first_breaking_value(named_values: dict[str, str]) -> tuple[str, str, str] | None:
     return next(((name, value, character) for name, value in named_values.items()
                  if (character := breaking_character(value))), None)
+
+
+def stored_brand(filament: dict[str, str]) -> dict[str, str]:
+    return {"brand": filament['vendor']}
+
+
+def stored_material_and_subtype(filament: dict[str, str]) -> dict[str, str]:
+    return {"material": filament['type'], "sub-type": filament['subtype']}
+
+
+def brand_can_be_set(filament: dict[str, str]) -> bool:
+    return (filament['type'] not in NO_MATERIAL
+            and first_breaking_value(stored_material_and_subtype(filament)) is None)
+
+
+def material_can_be_set(filament: dict[str, str]) -> bool:
+    return first_breaking_value(stored_brand(filament)) is None
+
+
+def command_can_set(field_name: str, filament: dict[str, str]) -> bool:
+    return brand_can_be_set(filament) if field_name == "brand" else material_can_be_set(filament)
+
+
+def how_to_set_anew(field_name: str, lane_name: str, filament: dict[str, str]) -> str:
+    # A command that would refuse in turn is left out, so the user is never sent back and forth.
+    if not command_can_set(field_name, filament):
+        return f"Set a new {field_name} on the printer screen or by reading the reel's tag again."
+    command = COMMAND_THAT_SETS[field_name].format(lane=lane_name, material=filament['type'])
+    return (f"Set a new {field_name} by sending {command}, on the printer screen, or by reading"
+            " the reel's tag again.")
 
 
 def refuse_breaking_characters(named_values: dict[str, str]) -> None:
@@ -259,6 +290,7 @@ class AFC:
                          " command at # * or ; and drops quote marks. Nothing was changed.")
 
     def _refuse_stored_values_the_printer_cannot_take(self, gcmd, command_name: str, lane,
+                                                      filament: dict[str, str],
                                                       stored_values: dict[str, str]) -> None:
         broken = first_breaking_value(stored_values)
         if broken is None:
@@ -266,8 +298,8 @@ class AFC:
         name, value, character = broken
         raise gcmd.error(
             f"{command_name}: lane {lane.name} holds the {name} {value!r}, and its {character!r}"
-            f" cannot go back to the printer. Set a new {name} with {COMMAND_THAT_SETS[name]},"
-            " on the printer screen, or by reading the reel's tag again. Nothing was changed.")
+            f" cannot go back to the printer. {how_to_set_anew(name, lane.name, filament)}"
+            " Nothing was changed.")
 
     def cmd_AFC_SET_LANE_MATERIAL(self, gcmd):
         self._refuse_values_klipper_changed(gcmd, "SET_MATERIAL")
@@ -275,13 +307,13 @@ class AFC:
         material = gcmd.get('MATERIAL', '')
         if material in NO_MATERIAL:
             raise gcmd.error(f"SET_MATERIAL: no material given for lane {lane.name}; give one"
-                             " with MATERIAL=. Nothing was changed.")
+                             " with MATERIAL=; NONE names no material. Nothing was changed.")
         subtype = gcmd.get('SUBTYPE', None)
         filament = lane.filament()
         if is_the_lanes_own_material(material, subtype, filament):
             return
         self._refuse_stored_values_the_printer_cannot_take(
-            gcmd, "SET_MATERIAL", lane, {"brand": filament['vendor']})
+            gcmd, "SET_MATERIAL", lane, filament, stored_brand(filament))
         vendor = vendor_for_material(filament['vendor'])
         self._write_filament(gcmd, "SET_MATERIAL", lane, (vendor, material, subtype or ''))
 
@@ -291,7 +323,7 @@ class AFC:
         vendor = gcmd.get('VENDOR', '')
         if vendor in NO_VENDOR:
             raise gcmd.error(f"SET_VENDOR: no brand given for lane {lane.name}; give one with"
-                             " VENDOR=. Nothing was changed.")
+                             " VENDOR=; NONE names no brand. Nothing was changed.")
         filament = lane.filament()
         if vendor == filament['vendor']:
             return
@@ -299,8 +331,7 @@ class AFC:
             raise gcmd.error(f"SET_VENDOR: lane {lane.name} has no material yet; set it with"
                              " SET_MATERIAL first. Nothing was changed.")
         self._refuse_stored_values_the_printer_cannot_take(
-            gcmd, "SET_VENDOR", lane,
-            {"material": filament['type'], "sub-type": filament['subtype']})
+            gcmd, "SET_VENDOR", lane, filament, stored_material_and_subtype(filament))
         self._write_filament(
             gcmd, "SET_VENDOR", lane, (vendor, filament['type'], filament['subtype']))
 

@@ -76,11 +76,14 @@ covers it under "Limits worth knowing about".
   `COLORS=<hex>`.
   A colour you set wins over the one the reel's tag gave the lane, and the printer then no
   longer counts that reel as a Snapmaker one until it reads the tag again.
-- `SET_MATERIAL LANE=E0 MATERIAL=PETG SUBTYPE=Matte` sets a lane's material and keeps its
-  brand. `SET_VENDOR LANE=E0 VENDOR=Elegoo` sets its brand and keeps its material, so set the
-  material first on an empty lane. Both win over the reel's tag, like a colour. A missing or
-  empty material or brand, or a value that holds ' # * ; \ or a line break, is refused and
-  nothing changes.
+- `SET_MATERIAL LANE=E0 MATERIAL=PETG SUBTYPE=Matte` sets a lane's material and sub-type and
+  keeps its brand; a lane with no brand gets Generic. Leave out `SUBTYPE` with a new material
+  and the sub-type is cleared. `SET_VENDOR LANE=E0 VENDOR=Elegoo` sets its brand and keeps its
+  material and sub-type, so set the material first on an empty lane. Both win over the reel's
+  tag, like a colour. These are refused and nothing changes: a missing or empty material or brand, or
+  `NONE`; a value that holds ' # * ; \ or a line break; a value typed with a quote mark Klipper
+  drops, like Jayo's without quotes around it. A lane already holding such a value, from its tag
+  or the screen, refuses both too, and the message says how to fix it.
 - `SET_WEIGHT` is accepted and does nothing: the U1 weighs no lane, and Spoolman holds a spool's
   weight. Fluidd sends it every time a lane's spool is cleared.
 - `CHANGE_TOOL` (Load button) loads filament.
