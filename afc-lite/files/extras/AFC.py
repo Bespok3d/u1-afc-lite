@@ -18,6 +18,8 @@ MULTI_COLOR_MODE = 0
 NOTHING_SET = "NONE"
 # The printer's print_task_config counts an empty material as no material too.
 NO_MATERIAL = (NOTHING_SET, "")
+# An empty brand names no brand either.
+NO_VENDOR = (NOTHING_SET, "")
 # The slicer's name for a reel of no known brand.
 GENERIC_VENDOR = "Generic"
 # A ' closes the quotes around a value sent to the printer, Klipper cuts a command line at # * or ;
@@ -110,7 +112,7 @@ def is_the_lanes_own_material(material: str, subtype: str | None, filament: dict
 
 
 def vendor_for_material(lane_vendor: str) -> str:
-    return GENERIC_VENDOR if lane_vendor == NOTHING_SET else lane_vendor
+    return GENERIC_VENDOR if lane_vendor in NO_VENDOR else lane_vendor
 
 
 def breaking_character(value: str) -> str | None:
@@ -277,7 +279,10 @@ class AFC:
     def cmd_AFC_SET_LANE_VENDOR(self, gcmd):
         self._refuse_values_klipper_changed(gcmd, "SET_VENDOR")
         lane = self._lane_named(gcmd)
-        vendor = gcmd.get('VENDOR', NOTHING_SET)
+        vendor = gcmd.get('VENDOR', '')
+        if not vendor:
+            raise gcmd.error(f"SET_VENDOR: no brand given for lane {lane.name}; give one with"
+                             " VENDOR=. Nothing was changed.")
         filament = lane.filament()
         if vendor == filament['vendor']:
             return

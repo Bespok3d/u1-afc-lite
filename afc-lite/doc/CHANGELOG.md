@@ -28,7 +28,8 @@
 - Setting a brand on a lane with no material now says so and changes nothing; set the
   material first.
 - Setting a lane's material with no material given now says so and changes nothing; before,
-  a missing one became PLA.
+  a missing one became PLA. The same goes for a brand; before, a missing one wiped the lane's
+  brand.
 - A material, sub-type or brand that the printer would get cut short or changed is now refused
   with a message, and nothing changes. That is one holding ' # * ; \ or a line break, or one
   typed with a quote mark Klipper drops, like Jayo's without quotes around it.

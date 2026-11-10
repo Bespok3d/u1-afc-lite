@@ -231,6 +231,28 @@ def test_a_new_material_reaches_a_tagged_lane_and_keeps_its_brand():
         "FILAMENT_TYPE='PETG' FILAMENT_SUBTYPE='' VENDOR='Snapmaker' FORCE=1"]
 
 
+def test_a_material_on_a_lane_with_an_empty_brand_goes_as_generic():
+    afc = afc_with_tagged_lane(1)
+    afc.lanes["E1"].filament_held["vendor"] = ""
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 "
+        "FILAMENT_TYPE='PETG' FILAMENT_SUBTYPE='' VENDOR='Generic' FORCE=1"]
+
+
+@pytest.mark.parametrize("vendor_params, raw_line", [
+    ({"LANE": "E1"}, "LANE=E1"),
+    ({"LANE": "E1", "VENDOR": ""}, "LANE=E1 VENDOR="),
+    ({"LANE": "E1", "VENDOR": ""}, 'LANE=E1 VENDOR=""'),
+])
+def test_setting_no_brand_is_refused_and_nothing_written(vendor_params, raw_line):
+    """A missing brand used to be written as NONE, wiping the lane's brand without a word."""
+    afc = afc_with_tagged_lane(1)
+    with pytest.raises(ValueError, match="SET_VENDOR: no brand given for lane E1"):
+        afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd(vendor_params, raw_line))
+    assert afc.gcode.scripts_run == []
+
+
 def test_a_material_on_a_lane_of_no_known_brand_goes_as_generic():
     afc = afc_with_lane(0)
     afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E0", "MATERIAL": "PLA", "SUBTYPE": "Silk"}))
