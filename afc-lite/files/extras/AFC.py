@@ -150,7 +150,8 @@ COMMAND_CAN_SET = {"brand": brand_can_be_set, "material": material_can_be_set,
 
 
 def kept_subtype_parameter(subtype: str) -> str:
-    if subtype in NO_MATERIAL or breaking_character(subtype):
+    # NONE goes back as it is, as SET_VENDOR sends it, so the lane holds the same either way.
+    if not subtype or breaking_character(subtype):
         return ""
     return f" SUBTYPE='{subtype}'"
 
