@@ -123,7 +123,7 @@ class AFC:
             settings = color_settings(color, gcmd.get('COLORS', ''))
         except ValueError as reason:
             raise gcmd.error(f"SET_COLOR: {reason}") from reason
-        if is_the_lanes_own_color(color, lane.get_status()['color']):
+        if color and is_the_lanes_own_color(color, lane.get_status()['color']):
             return
         # FORCE: the printer refuses any change to a lane it read off an official tag, and a colour
         # the user picks by hand is meant to win over the tag.

@@ -144,6 +144,16 @@ def test_a_colour_list_starting_with_the_lanes_colour_is_still_sent():
         "COLOR_NUMS=1 COLORS=30D68B MULTI_MODE=0 FORCE=1"]
 
 
+def test_a_colour_list_reaches_a_lane_with_no_colour_yet():
+    """Only a COLOR can be the dialog sending the lane's colour back; a missing COLOR is not."""
+    afc = afc_with_lane(3)
+    afc.lanes["E3"].color = "#"
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E3", "COLORS": "30D68B,E736D4"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=3 "
+        "COLOR_NUMS=2 COLORS=30D68B,E736D4 MULTI_MODE=0 FORCE=1"]
+
+
 def test_every_colour_of_a_multi_colour_reel_reaches_the_printer():
     """SET_COLOR used to send only FILAMENT_COLOR_RGBA, which flattens a reel to one colour. No
     ALPHA is sent, so the printer keeps the lane's own transparency."""
