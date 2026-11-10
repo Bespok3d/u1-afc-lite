@@ -138,12 +138,21 @@ def key_klipper_reads(typed_parameter: str) -> str:
     return QUOTED_PART.sub(r"\1\2", typed_parameter).split("=", 1)[0].upper()
 
 
+def is_wrapped_in_quotes(typed_text: str) -> bool:
+    """True for "KEY=value" typed inside one pair of quotes, which Klipper reads as KEY=value."""
+    opening = typed_text[:1]
+    return (opening in QUOTES and typed_text[1:].endswith(opening)
+            and opening not in typed_text[1:-1])
+
+
 def typed_whole(typed_parameter: tuple[str, bool] | None, value: str) -> bool:
     """True when the value Klipper read is all the user typed: bare and ended by a space or the
     line's end, or wrapped whole in one pair of quotes."""
     if typed_parameter is None:
         return False
     typed_text, ends_at_the_cut = typed_parameter
+    if is_wrapped_in_quotes(typed_text):
+        return typed_text[1:-1].split("=", 1)[-1] == value
     typed_value = typed_text.split("=", 1)[-1]
     quoted_forms = {f"{quote}{value}{quote}" for quote in QUOTES}
     return typed_value in quoted_forms or (typed_value == value and not ends_at_the_cut)

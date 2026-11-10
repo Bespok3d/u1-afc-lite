@@ -321,7 +321,8 @@ def test_a_brand_the_printer_holds_that_it_cannot_take_back_is_refused(breaking_
                                    "LANE=E1 MATERIAL=PLA*CF", 'LANE=E1 MATERIAL="PLA ;CF"',
                                    'LANE=E1 MATERIAL="PLA;CF" ; MATERIAL=PLA',
                                    "LANE=E1 MATERIAL='PLA#CF'",
-                                   "LANE=E1 MATERIAL=PLA MATERIAL=PLA#CF"])
+                                   "LANE=E1 MATERIAL=PLA MATERIAL=PLA#CF",
+                                   'LANE=E1 "MATERIAL=PLA#CF"'])
 def test_a_material_klipper_cut_short_is_refused_and_nothing_written(typed):
     """Klipper hands the command only "PLA", which was written as the whole material."""
     afc = afc_with_tagged_lane(1)
@@ -332,7 +333,8 @@ def test_a_material_klipper_cut_short_is_refused_and_nothing_written(typed):
 
 @pytest.mark.parametrize("typed", ["LANE=E1 MATERIAL=PETG ; spare reel",
                                    'LANE=E1 MATERIAL="PETG";spare reel', "lane=E1 material=PETG",
-                                   "LANE=E1\tMATERIAL='PETG'"])
+                                   "LANE=E1\tMATERIAL='PETG'", 'LANE=E1 "MATERIAL=PETG"',
+                                   "LANE=E1 'material=PETG';spare reel"])
 def test_a_material_klipper_read_whole_is_written(typed):
     afc = afc_with_tagged_lane(1)
     afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PETG"}, typed))
