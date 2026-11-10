@@ -40,14 +40,17 @@ class FakeConfig:
         return default
 
 
+REQUIRED = object()
+
+
 class FakeGcmd:
     def __init__(self, params):
         self._params = params
 
-    def get(self, key, default=None):
+    def get(self, key, default=REQUIRED):
         if key in self._params:
             return self._params[key]
-        if default is None:
+        if default is REQUIRED:
             raise self.error(f"missing {key}")
         return default
 
@@ -65,9 +68,13 @@ class FakeLane:
         self.lane_index = lane_index
         self.filament_name = ""
         self.color = "#FFFFFF"
+        self.filament_held = {"vendor": "NONE", "type": "NONE", "subtype": "NONE"}
 
     def get_status(self, eventtime=None):
         return {"color": self.color}
+
+    def filament(self):
+        return self.filament_held
 
 
 def make_afc():
@@ -193,6 +200,75 @@ def test_set_color_unknown_lane_raises():
     afc = afc_with_lane(0)
     with pytest.raises(ValueError):
         afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E9", "COLOR": "EE5911"}))
+    assert afc.gcode.scripts_run == []
+
+
+def afc_with_tagged_lane(lane_index):
+    """A lane holding a reel the printer read off a Snapmaker tag."""
+    afc = afc_with_lane(lane_index)
+    afc.lanes[f"E{lane_index}"].filament_held = {
+        "vendor": "Snapmaker", "type": "PLA", "subtype": "Matte"}
+    return afc
+
+
+def test_a_new_material_reaches_a_tagged_lane_and_keeps_its_brand():
+    """Without FORCE the printer refused the new material on a lane it read off an official tag."""
+    afc = afc_with_tagged_lane(2)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E2", "MATERIAL": "PETG"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=2 "
+        "FILAMENT_TYPE='PETG' FILAMENT_SUBTYPE='' VENDOR='Snapmaker' FORCE=1"]
+
+
+def test_a_material_on_a_lane_of_no_known_brand_goes_as_generic():
+    afc = afc_with_lane(0)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E0", "MATERIAL": "PLA", "SUBTYPE": "Silk"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=0 "
+        "FILAMENT_TYPE='PLA' FILAMENT_SUBTYPE='Silk' VENDOR='Generic' FORCE=1"]
+
+
+def test_the_dialog_sending_back_the_lanes_material_leaves_the_tag_read_alone():
+    """Clearing a lane's spool in the Fluidd dialog resends the lane's material unchanged."""
+    afc = afc_with_tagged_lane(1)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PLA"}))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_new_sub_type_of_the_same_material_is_sent():
+    afc = afc_with_tagged_lane(1)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PLA", "SUBTYPE": "Silk"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 "
+        "FILAMENT_TYPE='PLA' FILAMENT_SUBTYPE='Silk' VENDOR='Snapmaker' FORCE=1"]
+
+
+def test_the_lanes_own_material_and_sub_type_leave_the_tag_read_alone():
+    afc = afc_with_tagged_lane(1)
+    afc.cmd_AFC_SET_LANE_MATERIAL(FakeGcmd({"LANE": "E1", "MATERIAL": "PLA", "SUBTYPE": "Matte"}))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_new_brand_reaches_a_tagged_lane_and_keeps_its_material():
+    """The printer ignores a brand sent without a material, so the lane's own goes with it."""
+    afc = afc_with_tagged_lane(3)
+    afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E3", "VENDOR": "Elegoo"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=3 "
+        "FILAMENT_TYPE='PLA' FILAMENT_SUBTYPE='Matte' VENDOR='Elegoo' FORCE=1"]
+
+
+def test_the_lanes_own_brand_leaves_the_tag_read_alone():
+    afc = afc_with_tagged_lane(3)
+    afc.cmd_AFC_SET_LANE_VENDOR(FakeGcmd({"LANE": "E3", "VENDOR": "Snapmaker"}))
+    assert afc.gcode.scripts_run == []
+
+
+@pytest.mark.parametrize("set_filament", ["cmd_AFC_SET_LANE_MATERIAL", "cmd_AFC_SET_LANE_VENDOR"])
+def test_setting_the_filament_of_an_unknown_lane_raises(set_filament):
+    afc = afc_with_tagged_lane(0)
+    with pytest.raises(ValueError):
+        getattr(afc, set_filament)(FakeGcmd({"LANE": "E9", "MATERIAL": "PETG", "VENDOR": "Elegoo"}))
     assert afc.gcode.scripts_run == []
 
 

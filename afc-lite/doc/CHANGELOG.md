@@ -18,6 +18,10 @@
   message and leaves the lane as it was.
 - Clearing a lane's spool in Fluidd or Mainsail no longer turns a multi-colour reel into its
   first colour.
+- Picking a material or a brand for a lane now also works on a lane whose reel the printer
+  read off a Snapmaker tag; before, the printer refused it. Setting a brand now really
+  changes it; before, the printer ignored it.
+- Clearing a lane's spool in Fluidd no longer wipes the reel's sub-type, such as Matte or Silk.
 
 ## 0.1.13
 

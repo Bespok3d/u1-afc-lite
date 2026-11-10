@@ -524,3 +524,15 @@ def test_a_single_colour_reel_reports_its_one_colour(monkeypatch, tmp_path):
     orange_on_the_first_lane = ["EE5911FF", "FFFFFFFF", "FFFFFFFF", "FFFFFFFF"]
     lane.print_task_config = ColorPrintTaskConfig([], orange_on_the_first_lane)
     assert lane.get_status()["colors"] == ["#EE5911"]
+
+
+def test_a_lane_gives_the_brand_material_and_sub_type_the_printer_holds(monkeypatch, tmp_path):
+    monkeypatch.setattr(AFC_lane, "RFID_DATA_FILE", str(tmp_path / "absent.json"))
+    lane = lane_reading_its_tag(1, ["NONE", "Snapmaker", "NONE", "NONE"],
+                                ["NONE", "PLA", "NONE", "NONE"],
+                                ["NONE", "Matte", "NONE", "NONE"])
+    assert lane.filament() == {"vendor": "Snapmaker", "type": "PLA", "subtype": "Matte"}
+
+
+def test_a_lane_without_the_printers_filament_table_holds_nothing():
+    assert make_lane(0).filament() == {"vendor": "NONE", "type": "NONE", "subtype": "NONE"}

@@ -13,6 +13,11 @@ RGB_HEX_LENGTH = 6
 RGBA_HEX_LENGTH = 8
 # Snapmaker documents no meaning for MULTI_MODE; every known sender of a multi-colour reel sends 0.
 MULTI_COLOR_MODE = 0
+DEFAULT_MATERIAL = "PLA"
+# What the printer holds for a field no tag and no user has set.
+NOTHING_SET = "NONE"
+# The slicer's name for a reel of no known brand.
+GENERIC_VENDOR = "Generic"
 
 
 def _decode_name(raw: str) -> str:
@@ -81,6 +86,21 @@ def is_the_lanes_own_color(color: str, lane_color: str) -> bool:
     return color.strip().upper() == lane_color.lstrip("#").upper()
 
 
+def is_the_lanes_own_material(material: str, subtype: str | None, filament: dict) -> bool:
+    """The Fluidd lane dialog sends the lane's material back when only its spool is cleared, and
+    writing it would make the printer forget the reel came off a Snapmaker tag."""
+    return material == filament['type'] and subtype in (None, filament['subtype'])
+
+
+def vendor_for_material(lane_vendor: str) -> str:
+    return GENERIC_VENDOR if lane_vendor == NOTHING_SET else lane_vendor
+
+
+def filament_settings(vendor: str, material: str, subtype: str) -> str:
+    """The printer takes a brand only together with a material and a sub-type."""
+    return f"FILAMENT_TYPE='{material}' FILAMENT_SUBTYPE='{subtype}' VENDOR='{vendor}'"
+
+
 class AFCState:
     IDLE = "idle"
     LOADING = "loading"
@@ -101,6 +121,10 @@ class AFC:
                                     desc="Assign a Spoolman spool id to an AFC lane")
         self.gcode.register_command("AFC_SET_LANE_COLOR", self.cmd_AFC_SET_LANE_COLOR,
                                     desc="Set the colour or colours of the reel in an AFC lane")
+        self.gcode.register_command("AFC_SET_LANE_MATERIAL", self.cmd_AFC_SET_LANE_MATERIAL,
+                                    desc="Set the material of the reel in an AFC lane")
+        self.gcode.register_command("AFC_SET_LANE_VENDOR", self.cmd_AFC_SET_LANE_VENDOR,
+                                    desc="Set the brand of the reel in an AFC lane")
         self.gcode.register_command("SET_LANE_FILAMENT_NAME", self.cmd_SET_LANE_FILAMENT_NAME,
                                     desc="Set a lane filament display name by extruder")
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
@@ -113,11 +137,21 @@ class AFC:
             raise gcmd.error(f"unknown AFC lane: {lane_name}")
         lane.spool_id = spool_id
 
-    def cmd_AFC_SET_LANE_COLOR(self, gcmd):
+    def _lane_named(self, gcmd):
         lane_name = gcmd.get('LANE', 'E0')
         lane = self.lanes.get(lane_name)
         if lane is None:
             raise gcmd.error(f"unknown AFC lane: {lane_name}")
+        return lane
+
+    def _force_filament_config(self, lane, settings: str) -> None:
+        # FORCE: the printer refuses any change to a lane it read off an official tag, and what the
+        # user sets by hand is meant to win over the tag.
+        self.gcode.run_script_from_command(
+            f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={lane.lane_index} {settings} FORCE=1")
+
+    def cmd_AFC_SET_LANE_COLOR(self, gcmd):
+        lane = self._lane_named(gcmd)
         color = gcmd.get('COLOR', '')
         try:
             settings = color_settings(color, gcmd.get('COLORS', ''))
@@ -125,10 +159,26 @@ class AFC:
             raise gcmd.error(f"SET_COLOR: {reason}") from reason
         if color and is_the_lanes_own_color(color, lane.get_status()['color']):
             return
-        # FORCE: the printer refuses any change to a lane it read off an official tag, and a colour
-        # the user picks by hand is meant to win over the tag.
-        self.gcode.run_script_from_command(
-            f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={lane.lane_index} {settings} FORCE=1")
+        self._force_filament_config(lane, settings)
+
+    def cmd_AFC_SET_LANE_MATERIAL(self, gcmd):
+        lane = self._lane_named(gcmd)
+        material = gcmd.get('MATERIAL', DEFAULT_MATERIAL)
+        subtype = gcmd.get('SUBTYPE', None)
+        filament = lane.filament()
+        if is_the_lanes_own_material(material, subtype, filament):
+            return
+        vendor = vendor_for_material(filament['vendor'])
+        self._force_filament_config(lane, filament_settings(vendor, material, subtype or ''))
+
+    def cmd_AFC_SET_LANE_VENDOR(self, gcmd):
+        lane = self._lane_named(gcmd)
+        vendor = gcmd.get('VENDOR', NOTHING_SET)
+        filament = lane.filament()
+        if vendor == filament['vendor']:
+            return
+        self._force_filament_config(
+            lane, filament_settings(vendor, filament['type'], filament['subtype']))
 
     def cmd_SET_LANE_FILAMENT_NAME(self, gcmd):
         extruder = gcmd.get_int('EXTRUDER')

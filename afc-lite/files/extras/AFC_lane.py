@@ -13,6 +13,8 @@ TOOL_COUNT_MACRO = "gcode_macro AFC_TOOLS_IN_PLAY"
 # it), so a loaded file alone does not mean a print is in play.
 PRINT_STATES_WITH_A_FILE_IN_PLAY = ("printing", "paused")
 NOTHING_THE_TAG_KNOWS = "NONE"
+FILAMENT_STATUS_KEYS = {'vendor': 'filament_vendor', 'type': 'filament_type',
+                        'subtype': 'filament_sub_type'}
 # The slicer writes the list of filaments a file uses near its top; a few kilobytes reach it.
 HEADER_BYTES_TO_SCAN = 4096
 SLICER_FILAMENT_LIST = re.compile(r"^; filament: *([0-9][0-9, ]*)\r?$", re.MULTILINE)
@@ -338,6 +340,14 @@ class AFCLane:
             return coerce_spool_id(self.spool_id_from_spoolman)
         candidates = (self._rfid_spool_id(), self._tool_spool_id(state))
         return next((value for value in candidates if value is not None), None)
+
+    def filament(self) -> dict:
+        """The brand, material and sub-type the printer holds for this lane."""
+        if not self.print_task_config:
+            return {field: NOTHING_THE_TAG_KNOWS for field in FILAMENT_STATUS_KEYS}
+        status = self.print_task_config.get_status(None)
+        return {field: self._indexed(status, status_key, NOTHING_THE_TAG_KNOWS)
+                for field, status_key in FILAMENT_STATUS_KEYS.items()}
 
     def get_status(self, eventtime=None):
         response = {}

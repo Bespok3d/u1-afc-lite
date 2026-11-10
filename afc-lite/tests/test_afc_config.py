@@ -95,6 +95,17 @@ def test_assigning_a_tool_to_a_lane_leaves_every_other_tool_alone():
     assert "extruder_map_table" not in body
 
 
+@pytest.mark.parametrize(("macro_name", "plugin_command"), [
+    ("SET_MATERIAL", "AFC_SET_LANE_MATERIAL"),
+    ("SET_VENDOR", "AFC_SET_LANE_VENDOR"),
+])
+def test_set_material_and_vendor_hand_every_argument_to_the_plugin(macro_name, plugin_command):
+    """The macros wrote to the printer without FORCE, which a lane read off a tag refuses."""
+    body = macro_body(macro_name)
+    assert f"{plugin_command} {{rawparams}}" in body
+    assert "SET_PRINT_FILAMENT_CONFIG" not in body
+
+
 def test_set_color_hands_every_argument_to_the_plugins_command():
     """The macro sent one colour straight to the printer, which flattened a multi-colour reel.
     AFC.py checks the colours and sends all of them."""
