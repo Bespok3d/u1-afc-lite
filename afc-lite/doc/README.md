@@ -68,6 +68,14 @@ the screen and the slicer see what is loaded in each lane. The screen shows it e
 `Generic <material>` for everything else; that is the slicer's behaviour, and the Spoolman Bridge doc
 covers it under "Limits worth knowing about".
 
+- `SET_COLOR LANE=E0 COLOR=EE5911` sets a lane to one colour, which is what the lane dialog
+  sends. `SET_COLOR LANE=E0 COLORS=30D68B,E736D4` sets every colour of a multi-colour reel, up
+  to five. Write the colours as hex without `#`: Klipper reads `#` as the start of a comment.
+  `COLOR` set to a reel's first colour leaves the reel as it is, because the lane dialog sends
+  that colour back when only the spool changes; to turn the reel into that one colour, use
+  `COLORS=<hex>`.
+  A colour you set wins over the one the reel's tag gave the lane, and the printer then no
+  longer counts that reel as a Snapmaker one until it reads the tag again.
 - `CHANGE_TOOL` (Load button) loads filament.
 - `TOOL_UNLOAD` (Unload button) unloads filament.
 - `LANE_UNLOAD` (Eject button) docks (parks) the tool via `PARK_EXTRUDER`. It moves no filament.

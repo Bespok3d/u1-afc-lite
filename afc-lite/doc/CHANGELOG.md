@@ -12,6 +12,12 @@
 - During a print, a lane the print does not use no longer shows the spool picked for a tool
   another lane feeds.
 - A lane with a multi-colour reel now reports all its colours, not only the first one.
+- Setting a lane's colours can now keep all the colours of a multi-colour reel, up to five, not
+  just one. Picking a colour for a lane now also works on a lane whose reel the printer
+  read off a Snapmaker tag; before, the printer refused it. A wrong colour now gets a clear
+  message and leaves the lane as it was.
+- Clearing a lane's spool in Fluidd or Mainsail no longer turns a multi-colour reel into its
+  first colour.
 
 ## 0.1.13
 

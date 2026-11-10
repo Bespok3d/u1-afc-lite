@@ -1,5 +1,5 @@
 # ruff: noqa: PLR2004  Tests assert against literal spool ids and colors.
-"""Regression tests for the SET_SPOOL_ID g-code command."""
+"""Regression tests for the g-code commands AFC.py registers."""
 import base64
 
 import pytest
@@ -11,8 +11,14 @@ def _b64(text):
 
 
 class FakeGcode:
+    def __init__(self):
+        self.scripts_run = []
+
     def register_command(self, *args, **kwargs):
         pass
+
+    def run_script_from_command(self, script):
+        self.scripts_run.append(script)
 
 
 class FakePrinter:
@@ -58,6 +64,10 @@ class FakeLane:
         self.spool_id = None
         self.lane_index = lane_index
         self.filament_name = ""
+        self.color = "#FFFFFF"
+
+    def get_status(self, eventtime=None):
+        return {"color": self.color}
 
 
 def make_afc():
@@ -92,6 +102,88 @@ def test_set_lane_filament_name_unknown_extruder_raises():
     afc.lanes = {"E0": FakeLane(lane_index=0)}
     with pytest.raises(ValueError):
         afc.cmd_SET_LANE_FILAMENT_NAME(FakeGcmd({"EXTRUDER": "9", "NAME_B64": _b64("x")}))
+
+
+def afc_with_lane(lane_index):
+    afc = make_afc()
+    afc.lanes = {f"E{lane_index}": FakeLane(lane_index=lane_index)}
+    return afc
+
+
+def test_one_picked_colour_sets_the_lane_to_that_colour_over_a_tag():
+    """The Fluidd and Mainsail lane dialogs send one COLOR. Without FORCE the printer refused the
+    pick on a lane it read off an official tag."""
+    afc = afc_with_lane(2)
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E2", "COLOR": "ee5911"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=2 "
+        "COLOR_NUMS=1 COLORS=EE5911 MULTI_MODE=0 FORCE=1"]
+
+
+def test_a_colour_with_its_own_transparency_replaces_the_lanes():
+    afc = afc_with_lane(0)
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E0", "COLOR": "EE591180"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=0 FILAMENT_COLOR_RGBA=EE591180 FORCE=1"]
+
+
+def test_the_dialog_sending_back_the_first_colour_keeps_a_multi_colour_reel():
+    """Clearing a lane's spool in the dialog resends the lane's colour, the first of the reel's."""
+    afc = afc_with_lane(1)
+    afc.lanes["E1"].color = "#30D68B"
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E1", "COLOR": "30d68b"}))
+    assert afc.gcode.scripts_run == []
+
+
+def test_a_colour_list_starting_with_the_lanes_colour_is_still_sent():
+    afc = afc_with_lane(1)
+    afc.lanes["E1"].color = "#30D68B"
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E1", "COLORS": "30D68B"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 "
+        "COLOR_NUMS=1 COLORS=30D68B MULTI_MODE=0 FORCE=1"]
+
+
+def test_every_colour_of_a_multi_colour_reel_reaches_the_printer():
+    """SET_COLOR used to send only FILAMENT_COLOR_RGBA, which flattens a reel to one colour. No
+    ALPHA is sent, so the printer keeps the lane's own transparency."""
+    afc = afc_with_lane(1)
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E1", "COLORS": "30d68b,E736D4,a8c70c"}))
+    assert afc.gcode.scripts_run == [
+        "SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER=1 "
+        "COLOR_NUMS=3 COLORS=30D68B,E736D4,A8C70C MULTI_MODE=0 FORCE=1"]
+
+
+def test_a_reel_takes_up_to_five_colours():
+    afc = afc_with_lane(0)
+    five_colours = "111111,222222,333333,444444,555555"
+    afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E0", "COLORS": five_colours}))
+    assert "COLOR_NUMS=5 COLORS=111111,222222,333333,444444,555555" in afc.gcode.scripts_run[0]
+
+
+@pytest.mark.parametrize("colour_params", [
+    {"COLORS": "111111,222222,333333,444444,555555,666666"},
+    {"COLORS": "30D68B,GG0000"},
+    {"COLORS": "30D68B,FF00"},
+    {"COLORS": "30D68B,"},
+    {"COLOR": "EE59"},
+    {"COLOR": "EE5911F"},
+    {"COLOR": "orange"},
+    {"COLOR": "EE5911", "COLORS": "30D68B,E736D4"},
+    {},
+])
+def test_a_wrong_colour_is_refused_and_the_lane_left_alone(colour_params):
+    afc = afc_with_lane(0)
+    with pytest.raises(ValueError, match="SET_COLOR"):
+        afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E0", **colour_params}))
+    assert afc.gcode.scripts_run == []
+
+
+def test_set_color_unknown_lane_raises():
+    afc = afc_with_lane(0)
+    with pytest.raises(ValueError):
+        afc.cmd_AFC_SET_LANE_COLOR(FakeGcmd({"LANE": "E9", "COLOR": "EE5911"}))
+    assert afc.gcode.scripts_run == []
 
 
 class FakeExtruder:

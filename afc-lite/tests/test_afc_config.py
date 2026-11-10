@@ -93,3 +93,11 @@ def test_assigning_a_tool_to_a_lane_leaves_every_other_tool_alone():
     body = macro_body("SET_MAP")
     assert body.count("SET_PRINT_EXTRUDER_MAP") == 1
     assert "extruder_map_table" not in body
+
+
+def test_set_color_hands_every_argument_to_the_plugins_command():
+    """The macro sent one colour straight to the printer, which flattened a multi-colour reel.
+    AFC.py checks the colours and sends all of them."""
+    body = macro_body("SET_COLOR")
+    assert "AFC_SET_LANE_COLOR {rawparams}" in body
+    assert "SET_PRINT_FILAMENT_CONFIG" not in body

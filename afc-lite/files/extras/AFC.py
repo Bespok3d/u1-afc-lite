@@ -4,6 +4,15 @@
 
 # ruff: noqa: N802  Klipper registers g-code handlers by method name; they must be cmd_UPPERCASE.
 import base64
+import string
+
+# The printer holds up to five colours per reel (FILAMENT_COLOR_NUMS_MAX in its print_task_config).
+REEL_COLORS_MAX = 5
+HEX_DIGITS = frozenset(string.hexdigits)
+RGB_HEX_LENGTH = 6
+RGBA_HEX_LENGTH = 8
+# Snapmaker documents no meaning for MULTI_MODE; every known sender of a multi-colour reel sends 0.
+MULTI_COLOR_MODE = 0
 
 
 def _decode_name(raw: str) -> str:
@@ -12,6 +21,64 @@ def _decode_name(raw: str) -> str:
         return base64.b64decode(raw).decode('utf-8', 'replace') if raw else ''
     except ValueError:
         return ''
+
+
+def _is_hex_color(color: str, hex_length: int) -> bool:
+    return len(color) == hex_length and set(color) <= HEX_DIGITS
+
+
+def reel_colors(color_list: str) -> list[str]:
+    """The colours of a multi-colour reel from a `COLORS=a,b` list, 6-digit hex each. Raises
+    ValueError saying what is wrong, so the console tells the user why nothing changed."""
+    colors = [color.strip().upper() for color in color_list.split(",")]
+    if len(colors) > REEL_COLORS_MAX:
+        raise ValueError(
+            f"a reel holds at most {REEL_COLORS_MAX} colours, COLORS lists {len(colors)}")
+    bad_colors = ", ".join(repr(color) for color in colors
+                           if not _is_hex_color(color, RGB_HEX_LENGTH))
+    if bad_colors:
+        raise ValueError(f"COLORS takes 6-digit hex colours without '#', not {bad_colors}")
+    return colors
+
+
+def single_color_settings(color: str) -> str:
+    """A 6-digit colour goes as a one-colour list, so the lane keeps its own transparency; only an
+    8-digit colour, which carries its own, replaces it."""
+    hex_color = color.strip().upper()
+    if _is_hex_color(hex_color, RGB_HEX_LENGTH):
+        return _multi_color_settings([hex_color])
+    if _is_hex_color(hex_color, RGBA_HEX_LENGTH):
+        return f"FILAMENT_COLOR_RGBA={hex_color}"
+    raise ValueError(f"COLOR takes a 6 or 8-digit hex colour without '#', not {color!r}")
+
+
+def _multi_color_settings(colors: list[str]) -> str:
+    """No ALPHA: the printer then keeps the lane's own transparency."""
+    return f"COLOR_NUMS={len(colors)} COLORS={','.join(colors)} MULTI_MODE={MULTI_COLOR_MODE}"
+
+
+def reel_color_settings(color_list: str) -> str:
+    return _multi_color_settings(reel_colors(color_list))
+
+
+def color_settings(color: str, color_list: str) -> str:
+    """The SET_PRINT_FILAMENT_CONFIG colour arguments for one colour (COLOR, what the Fluidd and
+    Mainsail lane dialogs send) or every colour of a multi-colour reel (COLORS). The one-colour
+    form sets the lane to that single colour, since that is what the user picked."""
+    if color and color_list:
+        raise ValueError("give COLOR or COLORS, not both")
+    if color_list:
+        return reel_color_settings(color_list)
+    if color:
+        return single_color_settings(color)
+    raise ValueError("give COLOR=<hex> for one colour or COLORS=<hex>,<hex> for a multi-colour"
+                     " reel, without '#': Klipper drops everything after a '#'")
+
+
+def is_the_lanes_own_color(color: str, lane_color: str) -> bool:
+    """The lane dialogs send the lane's colour back when only its spool changed, and for a
+    multi-colour reel that is its first colour: writing it would flatten the reel to one colour."""
+    return color.strip().upper() == lane_color.lstrip("#").upper()
 
 
 class AFCState:
@@ -32,6 +99,8 @@ class AFC:
 
         self.gcode.register_command("SET_SPOOL_ID", self.cmd_SET_SPOOL_ID,
                                     desc="Assign a Spoolman spool id to an AFC lane")
+        self.gcode.register_command("AFC_SET_LANE_COLOR", self.cmd_AFC_SET_LANE_COLOR,
+                                    desc="Set the colour or colours of the reel in an AFC lane")
         self.gcode.register_command("SET_LANE_FILAMENT_NAME", self.cmd_SET_LANE_FILAMENT_NAME,
                                     desc="Set a lane filament display name by extruder")
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
@@ -43,6 +112,23 @@ class AFC:
         if lane is None:
             raise gcmd.error(f"unknown AFC lane: {lane_name}")
         lane.spool_id = spool_id
+
+    def cmd_AFC_SET_LANE_COLOR(self, gcmd):
+        lane_name = gcmd.get('LANE', 'E0')
+        lane = self.lanes.get(lane_name)
+        if lane is None:
+            raise gcmd.error(f"unknown AFC lane: {lane_name}")
+        color = gcmd.get('COLOR', '')
+        try:
+            settings = color_settings(color, gcmd.get('COLORS', ''))
+        except ValueError as reason:
+            raise gcmd.error(f"SET_COLOR: {reason}") from reason
+        if is_the_lanes_own_color(color, lane.get_status()['color']):
+            return
+        # FORCE: the printer refuses any change to a lane it read off an official tag, and a colour
+        # the user picks by hand is meant to win over the tag.
+        self.gcode.run_script_from_command(
+            f"SET_PRINT_FILAMENT_CONFIG CONFIG_EXTRUDER={lane.lane_index} {settings} FORCE=1")
 
     def cmd_SET_LANE_FILAMENT_NAME(self, gcmd):
         extruder = gcmd.get_int('EXTRUDER')
